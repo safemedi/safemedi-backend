@@ -128,7 +128,7 @@ class TodayMedicationScheduleServiceTest {
     fun `공유 허용된 가족의 오늘 스케줄을 조회한다`() {
         val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
         val connectedUser = User(id = 2L, socialId = "kakao-family")
-        val family = Family(id = 10L, user = user, connectedUser = connectedUser, relation = "부모")
+        val family = Family(id = 10L, user = user, connectedUser = connectedUser, relation = "부모", isAllowMyInfo = false)
         val prescription = Prescription(
             id = 30L, user = connectedUser, title = "가족 처방전", startDate = today, endDate = today,
         )
@@ -138,6 +138,9 @@ class TodayMedicationScheduleServiceTest {
         )
         given(userRepository.findBySocialId("kakao-123")).willReturn(user)
         given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(
+            Family(user = family.connectedUser, connectedUser = user, relation = "가족", isAllowMyInfo = true),
+        )
         given(medicationRecordRepository.findTodaySchedules(2L, today.atStartOfDay(), today.plusDays(1).atStartOfDay()))
             .willReturn(listOf(record))
 
@@ -166,20 +169,39 @@ class TodayMedicationScheduleServiceTest {
     }
 
     @Test
-    fun `정보 공유를 허용하지 않은 가족은 조회를 거부한다`() {
+    fun `요청자가 공개해도 대상이 공유를 거부하면 조회를 차단한다`() {
+        val target = User(id = 2L, socialId = "family-user")
         val family = Family(
-            id = 10L, user = user, connectedUser = User(id = 2L, socialId = "kakao-family"),
-            relation = "부모", isAllowMyInfo = false,
+            id = 10L, user = user, connectedUser = target, relation = "가족", isAllowMyInfo = true,
         )
         given(userRepository.findBySocialId("kakao-123")).willReturn(user)
         given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(Family(user = target, connectedUser = user, relation = "가족", isAllowMyInfo = false))
 
-        val exception = assertFailsWith<BusinessException> {
+        val exception = kotlin.test.assertFailsWith<BusinessException> {
             service.findTodaySchedules("kakao-123", 10L)
         }
 
         assertEquals(ErrorCode.FAMILY_ACCESS_DENIED, exception.errorCode)
-        verifyNoInteractions(medicationRecordRepository)
+        org.mockito.Mockito.verifyNoInteractions(medicationRecordRepository)
+    }
+
+    @Test
+    fun `역방향 가족 연결이 없으면 조회를 차단한다`() {
+        val target = User(id = 2L, socialId = "family-user")
+        val family = Family(
+            id = 10L, user = user, connectedUser = target, relation = "가족", isAllowMyInfo = true,
+        )
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(null)
+
+        val exception = kotlin.test.assertFailsWith<BusinessException> {
+            service.findTodaySchedules("kakao-123", 10L)
+        }
+
+        assertEquals(ErrorCode.FAMILY_ACCESS_DENIED, exception.errorCode)
+        org.mockito.Mockito.verifyNoInteractions(medicationRecordRepository)
     }
 
     private fun medicationRecord(

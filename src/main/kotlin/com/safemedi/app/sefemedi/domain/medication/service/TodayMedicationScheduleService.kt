@@ -68,11 +68,16 @@ class TodayMedicationScheduleService(
 
         val family = familyRepository.findByIdAndUser_Id(id = familyId, userId = userId)
             ?: throw BusinessException(ErrorCode.FAMILY_ACCESS_DENIED)
-        if (!family.isAllowMyInfo) {
+        val targetUserId = family.connectedUser.id ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR)
+        val reverseFamily = familyRepository.findByUser_IdAndConnectedUser_Id(
+            userId = targetUserId,
+            connectedUserId = userId,
+        )
+        if (reverseFamily?.isAllowMyInfo != true) {
             throw BusinessException(ErrorCode.FAMILY_ACCESS_DENIED)
         }
 
-        return family.connectedUser.id ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR)
+        return targetUserId
     }
 
     private fun scheduleKey(record: MedicationRecord): ScheduleGroupKey {

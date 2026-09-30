@@ -105,11 +105,14 @@ class MedicationStatisticsServiceTest {
             user = user,
             connectedUser = connectedUser,
             relation = "어머니",
-            isAllowMyInfo = true,
+            isAllowMyInfo = false,
         )
 
         given(userRepository.findBySocialId("kakao-123")).willReturn(user)
         given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(
+            Family(user = family.connectedUser, connectedUser = user, relation = "가족", isAllowMyInfo = true),
+        )
         given(
             medicationRecordRepository.findStatisticsRecords(
                 userId = 2L,
@@ -161,6 +164,42 @@ class MedicationStatisticsServiceTest {
         }
 
         assertEquals(ErrorCode.FAMILY_ACCESS_DENIED, exception.errorCode)
+    }
+
+    @Test
+    fun `요청자가 공개해도 대상이 공유를 거부하면 조회를 차단한다`() {
+        val target = User(id = 2L, socialId = "family-user")
+        val family = Family(
+            id = 10L, user = user, connectedUser = target, relation = "가족", isAllowMyInfo = true,
+        )
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(Family(user = target, connectedUser = user, relation = "가족", isAllowMyInfo = false))
+
+        val exception = kotlin.test.assertFailsWith<BusinessException> {
+            medicationStatisticsService.findStatistics("kakao-123", "2026-04-01", "2026-04-07", 10L)
+        }
+
+        assertEquals(ErrorCode.FAMILY_ACCESS_DENIED, exception.errorCode)
+        org.mockito.Mockito.verifyNoInteractions(medicationRecordRepository)
+    }
+
+    @Test
+    fun `역방향 가족 연결이 없으면 조회를 차단한다`() {
+        val target = User(id = 2L, socialId = "family-user")
+        val family = Family(
+            id = 10L, user = user, connectedUser = target, relation = "가족", isAllowMyInfo = true,
+        )
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(null)
+
+        val exception = kotlin.test.assertFailsWith<BusinessException> {
+            medicationStatisticsService.findStatistics("kakao-123", "2026-04-01", "2026-04-07", 10L)
+        }
+
+        assertEquals(ErrorCode.FAMILY_ACCESS_DENIED, exception.errorCode)
+        org.mockito.Mockito.verifyNoInteractions(medicationRecordRepository)
     }
 
     private fun medicationRecord(

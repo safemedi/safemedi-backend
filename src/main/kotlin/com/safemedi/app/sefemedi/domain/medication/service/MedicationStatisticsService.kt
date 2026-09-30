@@ -80,12 +80,17 @@ class MedicationStatisticsService(
             userId = userId,
         ) ?: throw BusinessException(ErrorCode.FAMILY_ACCESS_DENIED)
 
-        if (!family.isAllowMyInfo) {
+        val targetUserId = family.connectedUser.id ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR)
+        val reverseFamily = familyRepository.findByUser_IdAndConnectedUser_Id(
+            userId = targetUserId,
+            connectedUserId = userId,
+        )
+        if (reverseFamily?.isAllowMyInfo != true) {
             throw BusinessException(ErrorCode.FAMILY_ACCESS_DENIED)
         }
 
         return StatisticsTarget(
-            userId = family.connectedUser.id ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR),
+            userId = targetUserId,
             relation = family.relation,
         )
     }

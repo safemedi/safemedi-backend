@@ -221,7 +221,7 @@ class MedicalSummaryServiceTest {
             user = currentUser,
             connectedUser = familyMember,
             relation = "부",
-            isAllowMyInfo = true,
+            isAllowMyInfo = false,
         )
         val profile = UserHealthProfile(
             userId = 2L,
@@ -243,6 +243,9 @@ class MedicalSummaryServiceTest {
 
         given(userRepository.findBySocialId("kakao-123")).willReturn(currentUser)
         given(familyRepository.findByIdAndUser_Id(9L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(
+            Family(user = family.connectedUser, connectedUser = currentUser, relation = "가족", isAllowMyInfo = true),
+        )
         given(userHealthProfileRepository.findById(2L)).willReturn(Optional.of(profile))
         given(userDiseaseMapRepository.findAllByUser_IdOrderByCreatedAtAsc(2L)).willReturn(emptyList())
         given(userAllergyRepository.findAllByUser_IdOrderByCreatedAtAsc(2L)).willReturn(emptyList())
@@ -289,26 +292,39 @@ class MedicalSummaryServiceTest {
     }
 
     @Test
-    fun `getFamilyMedicalSummary throws FAMILY_INFO_ACCESS_DENIED when family refuses sharing`() {
+    fun `요청자가 공개해도 대상이 공유를 거부하면 조회를 차단한다`() {
+        val target = User(id = 2L, socialId = "family-user")
         val family = Family(
-            id = 9L,
-            user = currentUser,
-            connectedUser = User(
-                id = 2L,
-                nickname = "정민수",
-                socialId = "family-123",
-            ),
-            relation = "부",
-            isAllowMyInfo = false,
+            id = 9L, user = currentUser, connectedUser = target, relation = "가족", isAllowMyInfo = true,
         )
-
         given(userRepository.findBySocialId("kakao-123")).willReturn(currentUser)
         given(familyRepository.findByIdAndUser_Id(9L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(Family(user = target, connectedUser = currentUser, relation = "가족", isAllowMyInfo = false))
 
         val exception = kotlin.test.assertFailsWith<BusinessException> {
             service.getFamilyMedicalSummary("kakao-123", 9L)
         }
 
         assertEquals(ErrorCode.FAMILY_INFO_ACCESS_DENIED, exception.errorCode)
+        org.mockito.Mockito.verifyNoInteractions(userHealthProfileRepository, userDiseaseMapRepository, userAllergyRepository, prescriptionRepository, prescriptionDrugRepository)
     }
+
+    @Test
+    fun `역방향 가족 연결이 없으면 조회를 차단한다`() {
+        val target = User(id = 2L, socialId = "family-user")
+        val family = Family(
+            id = 9L, user = currentUser, connectedUser = target, relation = "가족", isAllowMyInfo = true,
+        )
+        given(userRepository.findBySocialId("kakao-123")).willReturn(currentUser)
+        given(familyRepository.findByIdAndUser_Id(9L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(null)
+
+        val exception = kotlin.test.assertFailsWith<BusinessException> {
+            service.getFamilyMedicalSummary("kakao-123", 9L)
+        }
+
+        assertEquals(ErrorCode.FAMILY_INFO_ACCESS_DENIED, exception.errorCode)
+        org.mockito.Mockito.verifyNoInteractions(userHealthProfileRepository, userDiseaseMapRepository, userAllergyRepository, prescriptionRepository, prescriptionDrugRepository)
+    }
+
 }
