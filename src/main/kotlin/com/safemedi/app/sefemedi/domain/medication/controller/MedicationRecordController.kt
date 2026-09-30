@@ -11,6 +11,7 @@ import com.safemedi.app.sefemedi.domain.medication.service.MedicationStatisticsS
 import com.safemedi.app.sefemedi.domain.medication.service.TodayMedicationScheduleService
 import com.safemedi.app.sefemedi.global.error.BusinessException
 import com.safemedi.app.sefemedi.global.error.ErrorCode
+import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -45,9 +46,12 @@ class MedicationRecordController(
     @GetMapping("/today")
     fun findTodaySchedules(
         @AuthenticationPrincipal socialId: String?,
+        @Parameter(description = "조회할 가족 연결 ID. 생략 시 본인 조회, 지정 시 정보 공유가 허용된 가족만 조회")
+        @RequestParam(required = false) familyId: Long?,
     ): TodayMedicationScheduleResponse {
         return todayMedicationScheduleService.findTodaySchedules(
             socialId = socialId ?: throw BusinessException(ErrorCode.INVALID_TOKEN),
+            familyId = familyId,
         )
     }
 

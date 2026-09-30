@@ -1,5 +1,6 @@
 package com.safemedi.app.sefemedi.domain.medication.service
 
+import com.safemedi.app.sefemedi.domain.family.repository.FamilyRepository
 import com.safemedi.app.sefemedi.domain.medication.dto.TodayMedicationScheduleItemResponse
 import com.safemedi.app.sefemedi.domain.medication.dto.TodayMedicationScheduleResponse
 import com.safemedi.app.sefemedi.domain.medication.dto.TodayMedicationSummaryResponse
@@ -20,17 +21,19 @@ import java.time.format.DateTimeFormatter
 class TodayMedicationScheduleService(
     private val userRepository: UserRepository,
     private val medicationRecordRepository: MedicationRecordRepository,
+    private val familyRepository: FamilyRepository,
 ) {
     @Transactional(readOnly = true)
-    fun findTodaySchedules(socialId: String): TodayMedicationScheduleResponse {
+    fun findTodaySchedules(socialId: String, familyId: Long? = null): TodayMedicationScheduleResponse {
         val user = userRepository.findBySocialId(socialId)
             ?: throw BusinessException(ErrorCode.INVALID_TOKEN)
         val userId = user.id ?: throw BusinessException(ErrorCode.INVALID_TOKEN)
+        val targetUserId = resolveTargetUserId(userId, familyId)
 
         val now = LocalDateTime.now(SERVICE_ZONE_ID)
         val today = LocalDate.now(SERVICE_ZONE_ID)
         val records = medicationRecordRepository.findTodaySchedules(
-            userId = userId,
+            userId = targetUserId,
             startAt = today.atStartOfDay(),
             endAt = today.plusDays(1).atStartOfDay(),
         )
@@ -56,6 +59,20 @@ class TodayMedicationScheduleService(
             ),
             schedules = schedules,
         )
+    }
+
+    private fun resolveTargetUserId(userId: Long, familyId: Long?): Long {
+        if (familyId == null) {
+            return userId
+        }
+
+        val family = familyRepository.findByIdAndUser_Id(id = familyId, userId = userId)
+            ?: throw BusinessException(ErrorCode.FAMILY_ACCESS_DENIED)
+        if (!family.isAllowMyInfo) {
+            throw BusinessException(ErrorCode.FAMILY_ACCESS_DENIED)
+        }
+
+        return family.connectedUser.id ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR)
     }
 
     private fun scheduleKey(record: MedicationRecord): ScheduleGroupKey {
