@@ -64,4 +64,9 @@ interface FamilyRepository : JpaRepository<Family, Long> {
         id: Long,
         userId: Long,
     ): Family?
+
+    fun findByUser_IdAndConnectedUser_Id(
+        userId: Long,
+        connectedUserId: Long,
+    ): Family?
 }

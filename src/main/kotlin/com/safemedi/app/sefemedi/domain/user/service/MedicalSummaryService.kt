@@ -52,7 +52,12 @@ class MedicalSummaryService(
             userId = userId,
         ) ?: throw BusinessException(ErrorCode.FAMILY_NOT_FOUND)
 
-        if (!family.isAllowMyInfo) {
+        val targetUserId = family.connectedUser.id ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR)
+        val reverseFamily = familyRepository.findByUser_IdAndConnectedUser_Id(
+            userId = targetUserId,
+            connectedUserId = userId,
+        )
+        if (reverseFamily?.isAllowMyInfo != true) {
             throw BusinessException(ErrorCode.FAMILY_INFO_ACCESS_DENIED)
         }
 

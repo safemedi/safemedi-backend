@@ -1,5 +1,7 @@
 package com.safemedi.app.sefemedi.domain.medication.service
 
+import com.safemedi.app.sefemedi.domain.family.entity.Family
+import com.safemedi.app.sefemedi.domain.family.repository.FamilyRepository
 import com.safemedi.app.sefemedi.domain.medication.entity.MedicationRecord
 import com.safemedi.app.sefemedi.domain.medication.entity.MedicationStatus
 import com.safemedi.app.sefemedi.domain.medication.entity.Prescription
@@ -14,6 +16,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.BDDMockito.given
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
+import org.mockito.Mockito.verifyNoMoreInteractions
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -24,6 +29,7 @@ import kotlin.test.assertFailsWith
 class TodayMedicationScheduleServiceTest {
     private lateinit var userRepository: UserRepository
     private lateinit var medicationRecordRepository: MedicationRecordRepository
+    private lateinit var familyRepository: FamilyRepository
     private lateinit var service: TodayMedicationScheduleService
 
     private val user = User(
@@ -36,8 +42,11 @@ class TodayMedicationScheduleServiceTest {
         userRepository = mock(UserRepository::class.java)
         medicationRecordRepository = mock(MedicationRecordRepository::class.java)
 
+        familyRepository = mock(FamilyRepository::class.java)
+
         service = TodayMedicationScheduleService(
             userRepository = userRepository,
+            familyRepository = familyRepository,
             medicationRecordRepository = medicationRecordRepository,
         )
     }
@@ -88,6 +97,7 @@ class TodayMedicationScheduleServiceTest {
 
         val response = service.findTodaySchedules("kakao-123")
 
+        verifyNoInteractions(familyRepository)
         assertEquals(today, response.date)
         assertEquals(1, response.summary.completedCount)
         assertEquals(2, response.summary.totalCount)
@@ -112,6 +122,86 @@ class TodayMedicationScheduleServiceTest {
         }
 
         assertEquals(ErrorCode.INVALID_TOKEN, exception.errorCode)
+    }
+
+    @Test
+    fun `공유 허용된 가족의 오늘 스케줄을 조회한다`() {
+        val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
+        val connectedUser = User(id = 2L, socialId = "kakao-family")
+        val family = Family(id = 10L, user = user, connectedUser = connectedUser, relation = "부모", isAllowMyInfo = false)
+        val prescription = Prescription(
+            id = 30L, user = connectedUser, title = "가족 처방전", startDate = today, endDate = today,
+        )
+        val record = medicationRecord(
+            id = 201L, user = connectedUser, prescription = prescription, drugName = "가족 약",
+            scheduledAt = today.atTime(8, 0), status = MedicationStatus.SUCCESS,
+        )
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(
+            Family(user = family.connectedUser, connectedUser = user, relation = "가족", isAllowMyInfo = true),
+        )
+        given(medicationRecordRepository.findTodaySchedules(2L, today.atStartOfDay(), today.plusDays(1).atStartOfDay()))
+            .willReturn(listOf(record))
+
+        val response = service.findTodaySchedules("kakao-123", 10L)
+
+        assertEquals(100, response.summary.completionRate)
+        assertEquals(1, response.summary.totalCount)
+        assertEquals(listOf(201L), response.schedules.single().recordIds)
+        assertEquals(30L, response.schedules.single().prescriptionId)
+        verify(medicationRecordRepository).findTodaySchedules(2L, today.atStartOfDay(), today.plusDays(1).atStartOfDay())
+        verifyNoMoreInteractions(medicationRecordRepository)
+    }
+
+    @Test
+    fun `본인 소유가 아니거나 해제된 가족 연결은 조회를 거부한다`() {
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(null)
+
+        val exception = assertFailsWith<BusinessException> {
+            service.findTodaySchedules("kakao-123", 10L)
+        }
+
+        assertEquals(ErrorCode.FAMILY_ACCESS_DENIED, exception.errorCode)
+        verify(familyRepository).findByIdAndUser_Id(10L, 1L)
+        verifyNoInteractions(medicationRecordRepository)
+    }
+
+    @Test
+    fun `요청자가 공개해도 대상이 공유를 거부하면 조회를 차단한다`() {
+        val target = User(id = 2L, socialId = "family-user")
+        val family = Family(
+            id = 10L, user = user, connectedUser = target, relation = "가족", isAllowMyInfo = true,
+        )
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(Family(user = target, connectedUser = user, relation = "가족", isAllowMyInfo = false))
+
+        val exception = kotlin.test.assertFailsWith<BusinessException> {
+            service.findTodaySchedules("kakao-123", 10L)
+        }
+
+        assertEquals(ErrorCode.FAMILY_ACCESS_DENIED, exception.errorCode)
+        org.mockito.Mockito.verifyNoInteractions(medicationRecordRepository)
+    }
+
+    @Test
+    fun `역방향 가족 연결이 없으면 조회를 차단한다`() {
+        val target = User(id = 2L, socialId = "family-user")
+        val family = Family(
+            id = 10L, user = user, connectedUser = target, relation = "가족", isAllowMyInfo = true,
+        )
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(familyRepository.findByIdAndUser_Id(10L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(null)
+
+        val exception = kotlin.test.assertFailsWith<BusinessException> {
+            service.findTodaySchedules("kakao-123", 10L)
+        }
+
+        assertEquals(ErrorCode.FAMILY_ACCESS_DENIED, exception.errorCode)
+        org.mockito.Mockito.verifyNoInteractions(medicationRecordRepository)
     }
 
     private fun medicationRecord(
