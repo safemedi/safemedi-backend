@@ -234,18 +234,18 @@ class AuthServiceTest {
     }
 
     @Test
-    fun `logout throws LOGOUT_DEVICE_TOKEN_REQUIRED when device token is blank`() {
-        val exception = assertThrows(BusinessException::class.java) {
-            authService.logout(
-                socialId = "4903042739",
-                accessToken = "access-token",
-                request = LogoutRequest(
-                    deviceToken = " ",
-                ),
-            )
+    fun `디바이스 토큰이 누락되거나 비어 있어도 다른 기기 변경 없이 로그아웃한다`() {
+        given(userRepository.findBySocialId("4903042739"))
+            .willReturn(User(id = 1L, socialId = "4903042739"))
+        val expiresAt = givenValidLogoutAccessToken()
+
+        listOf(null, "", " ").forEach { token ->
+            authService.logout("4903042739", "access-token", LogoutRequest(token))
         }
 
-        assertEquals(ErrorCode.LOGOUT_DEVICE_TOKEN_REQUIRED, exception.errorCode)
+        org.mockito.Mockito.verifyNoInteractions(userDeviceRepository)
+        verify(refreshTokenRepository, org.mockito.Mockito.times(3)).deleteByUserId(1L)
+        verify(accessTokenBlacklistService, org.mockito.Mockito.times(3)).blacklist("access-token", expiresAt)
     }
 
     @Test
@@ -289,7 +289,7 @@ class AuthServiceTest {
     }
 
     @Test
-    fun `logout deactivates the user's other active device when the given device token matches none`() {
+    fun `등록되지 않은 토큰으로 로그아웃해도 다른 활성 기기를 비활성화하지 않는다`() {
         val user = User(
             id = 1L,
             socialId = "4903042739",
@@ -317,7 +317,9 @@ class AuthServiceTest {
         )
 
         assertEquals("로그아웃이 성공적으로 진행되었습니다.", response.message)
-        assertEquals(false, otherActiveDevice.isActive)
+        assertEquals(true, otherActiveDevice.isActive)
+        verify(userDeviceRepository, org.mockito.Mockito.never())
+            .findFirstByUser_IdAndIsActiveTrueOrderByCreatedAtDesc(1L)
     }
 
     @Test
