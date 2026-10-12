@@ -57,6 +57,7 @@ class NotificationOutboxWorkerServiceTest {
         val now = LocalDateTime.of(2026, 6, 29, 9, 0)
         val outbox = notificationOutbox()
         val userDevice = userDevice()
+        given(userDeviceRepository.findById(20L)).willReturn(Optional.of(userDevice))
 
         givenDueOutboxes(now, listOf(outbox))
         given(userDeviceRepository.findFirstByUser_IdAndIsActiveTrueOrderByCreatedAtDesc(1L)).willReturn(userDevice)
@@ -83,11 +84,12 @@ class NotificationOutboxWorkerServiceTest {
         val now = LocalDateTime.of(2026, 6, 29, 9, 0)
         val outbox = notificationOutbox()
         val userDevice = userDevice()
+        given(userDeviceRepository.findById(20L)).willReturn(Optional.of(userDevice))
 
         givenDueOutboxes(now, listOf(outbox))
         given(userDeviceRepository.findFirstByUser_IdAndIsActiveTrueOrderByCreatedAtDesc(1L)).willReturn(userDevice)
         given(notificationOutboxRepository.findById(10L)).willReturn(Optional.of(outbox))
-        given(userDeviceRepository.findById(20L)).willReturn(Optional.of(userDevice))
+        given(userDeviceRepository.findByDeviceToken("device-token")).willReturn(userDevice)
         notificationPushSender.result = NotificationPushResult(NotificationPushStatus.INVALID_TOKEN, "UNREGISTERED")
 
         notificationOutboxWorkerService.processDueOutboxes(now, batchSize = 50)
@@ -101,6 +103,7 @@ class NotificationOutboxWorkerServiceTest {
         val now = LocalDateTime.of(2026, 6, 29, 9, 0)
         val outbox = notificationOutbox()
         val userDevice = userDevice()
+        given(userDeviceRepository.findById(20L)).willReturn(Optional.of(userDevice))
 
         givenDueOutboxes(now, listOf(outbox))
         given(userDeviceRepository.findFirstByUser_IdAndIsActiveTrueOrderByCreatedAtDesc(1L)).willReturn(userDevice)
@@ -124,6 +127,51 @@ class NotificationOutboxWorkerServiceTest {
 
         notificationOutboxWorkerService.processDueOutboxes(now, batchSize = 50)
 
+        assertEquals(NotificationOutboxStatus.DEAD, outbox.status)
+        assertEquals(0, notificationPushSender.requests.size)
+    }
+
+    @Test
+    fun `발송 직전 비활성화되거나 소유자가 바뀌거나 삭제된 기기에는 발송하지 않는다`() {
+        val now = LocalDateTime.of(2026, 6, 29, 9, 0)
+        val changedDevices = listOf(
+            userDevice().apply { deactivate() },
+            userDevice().apply { register(User(id = 2L, socialId = "other"), "ANDROID") },
+            null,
+        )
+        changedDevices.forEach { currentDevice ->
+            val outbox = notificationOutbox()
+            givenDueOutboxes(now, listOf(outbox))
+            given(userDeviceRepository.findFirstByUser_IdAndIsActiveTrueOrderByCreatedAtDesc(1L))
+                .willReturn(userDevice())
+            given(userDeviceRepository.findById(20L)).willReturn(Optional.ofNullable(currentDevice))
+            given(notificationOutboxRepository.findById(10L)).willReturn(Optional.of(outbox))
+
+            notificationOutboxWorkerService.processDueOutboxes(now, batchSize = 50)
+
+            assertEquals(NotificationOutboxStatus.DEAD, outbox.status)
+            assertEquals(0, notificationPushSender.requests.size)
+        }
+    }
+
+    @Test
+    fun `FCM 응답을 기다리는 동안 소유권이 바뀌면 새 계정의 기기를 비활성화하지 않는다`() {
+        val now = LocalDateTime.of(2026, 6, 29, 9, 0)
+        val outbox = notificationOutbox()
+        val device = userDevice()
+        givenDueOutboxes(now, listOf(outbox))
+        given(userDeviceRepository.findFirstByUser_IdAndIsActiveTrueOrderByCreatedAtDesc(1L)).willReturn(device)
+        given(userDeviceRepository.findById(20L)).willReturn(Optional.of(device))
+        given(userDeviceRepository.findByDeviceToken("device-token")).willAnswer {
+            device.apply { register(User(id = 2L, socialId = "other"), "ANDROID") }
+        }
+        given(notificationOutboxRepository.findById(10L)).willReturn(Optional.of(outbox))
+        notificationPushSender.result = NotificationPushResult(NotificationPushStatus.INVALID_TOKEN)
+
+        notificationOutboxWorkerService.processDueOutboxes(now, batchSize = 50)
+
+        assertEquals(true, device.isActive)
+        assertEquals(2L, device.user.id)
         assertEquals(NotificationOutboxStatus.DEAD, outbox.status)
     }
 

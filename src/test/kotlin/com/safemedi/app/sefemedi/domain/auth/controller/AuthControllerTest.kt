@@ -54,6 +54,14 @@ class AuthControllerTest {
     }
 
     @Test
+    fun `인증 객체가 없으면 표준 인증 예외를 반환한다`() {
+        val exception = assertThrows(BusinessException::class.java) {
+            authController.logout(null, null, LogoutRequest())
+        }
+        assertEquals(ErrorCode.INVALID_TOKEN, exception.errorCode)
+    }
+
+    @Test
     fun `reissue rejects missing refresh token`() {
         val exception = assertThrows(BusinessException::class.java) {
             authController.reissue(TokenReissueRequest())

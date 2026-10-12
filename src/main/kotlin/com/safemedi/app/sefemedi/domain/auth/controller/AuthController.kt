@@ -52,8 +52,8 @@ class AuthController(
         method = [RequestMethod.POST, RequestMethod.DELETE],
     )
     fun logout(
-        authentication: Authentication,
-        @RequestHeader("Authorization") authorization: String?,
+        authentication: Authentication?,
+        @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestBody request: LogoutRequest,
     ): LogoutResponse {
         return authService.logout(
@@ -64,9 +64,9 @@ class AuthController(
     }
 
     private fun requireAuthenticatedSocialId(
-        authentication: Authentication,
+        authentication: Authentication?,
     ): String {
-        if (authentication is AnonymousAuthenticationToken || !authentication.isAuthenticated) {
+        if (authentication == null || authentication is AnonymousAuthenticationToken || !authentication.isAuthenticated) {
             throw BusinessException(ErrorCode.INVALID_TOKEN)
         }
 

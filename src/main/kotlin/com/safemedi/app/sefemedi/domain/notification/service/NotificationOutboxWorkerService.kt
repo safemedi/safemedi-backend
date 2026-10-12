@@ -113,6 +113,17 @@ class NotificationOutboxWorkerService(
         target: OutboxSendTarget,
         now: LocalDateTime,
     ) {
+        val isCurrentTarget = transactionTemplate.execute {
+            val device = userDeviceRepository.findById(target.deviceId).orElse(null)
+            val valid = device != null && device.isActive &&
+                device.user.id == target.userId && device.deviceToken == target.token
+            if (!valid) {
+                findOutboxOrNull(target.outboxId)?.markDead()
+            }
+            valid
+        } == true
+        if (!isCurrentTarget) return
+
         val result = notificationPushSender.send(
             NotificationPushRequest(
                 token = target.token,
@@ -158,7 +169,10 @@ class NotificationOutboxWorkerService(
                 target.deviceId,
                 result.errorCode,
             )
-            userDeviceRepository.findById(target.deviceId).ifPresent { it.deactivate() }
+            val device = userDeviceRepository.findByDeviceToken(target.token)
+            if (device?.id == target.deviceId && device.user.id == target.userId) {
+                device.deactivate()
+            }
             outbox.markDead()
         }
     }

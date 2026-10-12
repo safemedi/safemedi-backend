@@ -905,5 +905,7 @@ class UserServiceTest {
         }
 
         assertEquals(ErrorCode.DEVICE_TOKEN_ACCESS_DENIED, exception.errorCode)
+        assertEquals(true, userDevice.isActive)
+        assertEquals(2L, userDevice.user.id)
     }
 }

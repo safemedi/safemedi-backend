@@ -117,16 +117,12 @@ class AuthService(
             accessToken = accessToken,
         )
 
-        val userDevice = userDeviceRepository.findByDeviceToken(deviceToken)
+        val userDevice = deviceToken?.let(userDeviceRepository::findByDeviceToken)
         if (userDevice != null) {
             if (userDevice.user.id != userId) {
                 throw BusinessException(ErrorCode.LOGOUT_DEVICE_TOKEN_ACCESS_DENIED)
             }
             userDevice.deactivate()
-        } else {
-            // 클라이언트가 보낸 deviceToken이 등록된 기기와 매칭되지 않아도(재설치, 푸시 토큰 회전 등),
-            // 세션은 종료되므로 실제 활성 기기가 비활성화되지 않은 채 남아 로그아웃 후에도 푸시를 계속 받는 것을 막는다.
-            userDeviceRepository.findFirstByUser_IdAndIsActiveTrueOrderByCreatedAtDesc(userId)?.deactivate()
         }
 
         refreshTokenRepository.deleteByUserId(userId)
@@ -230,10 +226,10 @@ class AuthService(
 
     private fun validateLogoutDeviceToken(
         deviceToken: String?,
-    ): String {
+    ): String? {
         val trimmedToken = deviceToken?.trim()
         if (trimmedToken.isNullOrBlank()) {
-            throw BusinessException(ErrorCode.LOGOUT_DEVICE_TOKEN_REQUIRED)
+            return null
         }
         if (trimmedToken.length > MAX_DEVICE_TOKEN_LENGTH) {
             throw BusinessException(ErrorCode.LOGOUT_DEVICE_TOKEN_TOO_LONG)
