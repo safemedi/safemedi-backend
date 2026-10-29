@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-dev
+  group: safemedi-ec2-deploy
   cancel-in-progress: false
 
 permissions:
