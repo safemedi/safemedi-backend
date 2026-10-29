@@ -41,3 +41,7 @@ out/
 
 ### 개인 보안 설정 파일 ###
 application-secret.yml
+
+firebase-adminsdk.json
+*firebase-adminsdk*.json
+*service-account*.json

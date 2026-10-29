@@ -2,10 +2,17 @@ spring:
   application:
     name: safemedi
 
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
   profiles:
-    include:
-      - secret
+    include: ${SPRING_PROFILES_INCLUDE:}
+
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: validate
     show-sql: true
@@ -16,3 +23,33 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+jwt:
+  secret: ${JWT_SECRET}
+
+app:
+  test-login:
+    enabled: false
+  family-invitation:
+    base-url: ${FAMILY_INVITATION_BASE_URL}
+    token-encryption-key: ${FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY}
+
+kakao:
+  local-api:
+    rest-api-key: ${KAKAO_REST_API_KEY}
+
+firebase:
+  enabled: ${FIREBASE_ENABLED:false}
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+  outbox:
+    batch-size: ${FCM_OUTBOX_BATCH_SIZE:50}
+    fixed-delay-ms: ${FCM_OUTBOX_FIXED_DELAY_MS:60000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

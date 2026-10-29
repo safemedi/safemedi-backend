@@ -1,0 +1,43 @@
+{
+  "properties": [
+    {
+      "name": "app.test-login.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables the test login endpoint.",
+      "defaultValue": false
+    },
+    {
+      "name": "app.family-invitation.base-url",
+      "type": "java.lang.String",
+      "description": "Base URL used when creating family invitation links."
+    },
+    {
+      "name": "app.family-invitation.token-encryption-key",
+      "type": "java.lang.String",
+      "description": "Encryption key used for family invitation tokens."
+    },
+    {
+      "name": "firebase.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables Firebase messaging configuration and scheduled outbox processing.",
+      "defaultValue": false
+    },
+    {
+      "name": "firebase.credentials-path",
+      "type": "java.lang.String",
+      "description": "Path to the Firebase service account credentials file."
+    },
+    {
+      "name": "firebase.outbox.batch-size",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of due notification outbox records processed per batch.",
+      "defaultValue": 50
+    },
+    {
+      "name": "firebase.outbox.fixed-delay-ms",
+      "type": "java.lang.Long",
+      "description": "Fixed delay in milliseconds between notification outbox processing runs.",
+      "defaultValue": 60000
+    }
+  ]
+}

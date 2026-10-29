@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.safemedi",
+      "sha256_cert_fingerprints": [
+        "60:3E:28:93:12:15:F7:50:B0:1F:24:63:04:10:D8:66:EF:F3:D9:92:5C:E0:76:05:0C:82:F7:98:D7:B5:FA:E1",
+        "CA:D2:AB:24:9C:D1:4D:32:98:43:C3:BC:EB:53:ED:22:2C:58:5F:83:23:63:D7:23:98:2B:9E:DE:DA:A3:26:05"
+      ]
+    }
+  }
+]

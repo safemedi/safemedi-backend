@@ -1,0 +1,311 @@
+name: Deploy to AWS EC2 (PROD)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: safemedi-ec2-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_PROD_DEPLOY_ROLE_ARN: ${{ vars.AWS_PROD_DEPLOY_ROLE_ARN }}
+      AWS_PROD_SECURITY_GROUP_ID: ${{ vars.AWS_PROD_SECURITY_GROUP_ID }}
+      AWS_EC2_HOST_FINGERPRINT: SHA256:kNqWmJnH5qq+WmoFxKgmKxKOcqMsZI44cOpJ6slt/uA
+      DEPLOY_DIR: /opt/safemedi/prod
+      CONTAINER_NAME: safemedi-prod
+      DOCKER_NETWORK: safemedi-prod-network
+      IMAGE_TAG: safemedi-prod:${{ github.sha }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        id: deployment-config
+        shell: bash
+        env:
+          AWS_EC2_HOST: ${{ secrets.AWS_EC2_HOST }}
+          AWS_EC2_SSH_KEY: ${{ secrets.AWS_EC2_SSH_KEY }}
+          DB_URL: ${{ secrets.PROD_DB_URL }}
+          DB_USERNAME: ${{ secrets.PROD_DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.PROD_JWT_SECRET }}
+          FAMILY_INVITATION_BASE_URL: ${{ secrets.PROD_FAMILY_INVITATION_BASE_URL }}
+          FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY: ${{ secrets.PROD_FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY }}
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+
+          for NAME in \
+            AWS_REGION \
+            AWS_PROD_DEPLOY_ROLE_ARN \
+            AWS_PROD_SECURITY_GROUP_ID \
+            AWS_EC2_HOST \
+            AWS_EC2_SSH_KEY \
+            AWS_EC2_HOST_FINGERPRINT \
+            DB_URL \
+            DB_USERNAME \
+            DB_PASSWORD \
+            JWT_SECRET \
+            FAMILY_INVITATION_BASE_URL \
+            FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY \
+            KAKAO_REST_API_KEY
+          do
+            if [ -z "${!NAME}" ]; then
+              echo "::error::Required Actions variable or secret is not configured: $NAME"
+              exit 1
+            fi
+          done
+
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            echo "discord-enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "discord-enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate to AWS with OIDC
+        uses: aws-actions/configure-aws-credentials@v6.1.2
+        with:
+          role-to-assume: ${{ env.AWS_PROD_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: safemedi-prod-${{ github.run_id }}
+
+      - name: Remove stale GitHub Actions SSH rules
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t STALE_RULE_IDS < <(
+            aws ec2 describe-security-group-rules \
+              --filters "Name=group-id,Values=$AWS_PROD_SECURITY_GROUP_ID" \
+              --output json |
+              jq -r '
+                .SecurityGroupRules[]
+                | select(
+                    .IsEgress == false
+                    and .IpProtocol == "tcp"
+                    and .FromPort == 22
+                    and ((.Description // "") | startswith("safemedi-gha-"))
+                  )
+                | .SecurityGroupRuleId
+              '
+          )
+
+          if [ "${#STALE_RULE_IDS[@]}" -gt 0 ]; then
+            aws ec2 revoke-security-group-ingress \
+              --group-id "$AWS_PROD_SECURITY_GROUP_ID" \
+              --security-group-rule-ids "${STALE_RULE_IDS[@]}"
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+          cache: gradle
+
+      - name: Test and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean test bootJar
+
+      - name: Prepare deployment artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR_PATH="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' | head -n 1)"
+          test -n "$JAR_PATH"
+          cp "$JAR_PATH" app.jar
+          test -s app.jar
+
+      - name: Temporarily allow SSH from this runner
+        id: open-ssh
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUNNER_IP="$(curl --fail --silent --show-error https://checkip.amazonaws.com | tr -d '[:space:]')"
+          if ! [[ "$RUNNER_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            echo "::error::Unable to determine a valid GitHub runner IPv4 address"
+            exit 1
+          fi
+
+          RULE_DESCRIPTION="safemedi-gha-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          RULE_ID="$(
+            aws ec2 authorize-security-group-ingress \
+              --group-id "$AWS_PROD_SECURITY_GROUP_ID" \
+              --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32,Description=${RULE_DESCRIPTION}}]" \
+              --query 'SecurityGroupRules[0].SecurityGroupRuleId' \
+              --output text
+          )"
+
+          test -n "$RULE_ID"
+          test "$RULE_ID" != "None"
+          echo "rule-id=$RULE_ID" >> "$GITHUB_OUTPUT"
+          echo "Temporarily allowed SSH from ${RUNNER_IP}/32"
+
+      - name: Verify EC2 SSH host fingerprint
+        shell: bash
+        env:
+          AWS_EC2_HOST: ${{ secrets.AWS_EC2_HOST }}
+        run: |
+          set -euo pipefail
+
+          ACTUAL_FINGERPRINT="$(
+            ssh-keyscan -T 10 -t ecdsa "$AWS_EC2_HOST" 2>/dev/null |
+              ssh-keygen -lf - |
+              awk 'NR == 1 { print $2 }'
+          )"
+
+          if [ "$ACTUAL_FINGERPRINT" != "$AWS_EC2_HOST_FINGERPRINT" ]; then
+            echo "::error::Unexpected EC2 SSH host fingerprint: $ACTUAL_FINGERPRINT"
+            exit 1
+          fi
+
+      - name: Upload artifact to EC2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.AWS_EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.AWS_EC2_SSH_KEY }}
+          fingerprint: ${{ env.AWS_EC2_HOST_FINGERPRINT }}
+          source: "app.jar,Dockerfile,.dockerignore"
+          target: "/opt/safemedi/prod"
+          overwrite: true
+
+      - name: Deploy PROD container
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DB_URL: ${{ secrets.PROD_DB_URL }}
+          DB_USERNAME: ${{ secrets.PROD_DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.PROD_JWT_SECRET }}
+          FAMILY_INVITATION_BASE_URL: ${{ secrets.PROD_FAMILY_INVITATION_BASE_URL }}
+          FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY: ${{ secrets.PROD_FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY }}
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          FIREBASE_ENABLED: ${{ secrets.FIREBASE_ENABLED }}
+          FCM_OUTBOX_BATCH_SIZE: ${{ secrets.FCM_OUTBOX_BATCH_SIZE }}
+          FCM_OUTBOX_FIXED_DELAY_MS: ${{ secrets.FCM_OUTBOX_FIXED_DELAY_MS }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          DOCKER_NETWORK: ${{ env.DOCKER_NETWORK }}
+          DEPLOY_DIR: ${{ env.DEPLOY_DIR }}
+        with:
+          host: ${{ secrets.AWS_EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.AWS_EC2_SSH_KEY }}
+          fingerprint: ${{ env.AWS_EC2_HOST_FINGERPRINT }}
+          envs: DB_URL,DB_USERNAME,DB_PASSWORD,JWT_SECRET,FAMILY_INVITATION_BASE_URL,FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY,KAKAO_REST_API_KEY,FIREBASE_ENABLED,FCM_OUTBOX_BATCH_SIZE,FCM_OUTBOX_FIXED_DELAY_MS,IMAGE_TAG,CONTAINER_NAME,DOCKER_NETWORK,DEPLOY_DIR
+          command_timeout: 10m
+          script: |
+            set -eu
+
+            cd "$DEPLOY_DIR"
+
+            test -n "$DB_URL"
+            test -n "$DB_USERNAME"
+            test -n "$DB_PASSWORD"
+            test -n "$JWT_SECRET"
+            test -n "$FAMILY_INVITATION_BASE_URL"
+            test -n "$FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY"
+            test -n "$KAKAO_REST_API_KEY"
+            test -r "$DEPLOY_DIR/secrets/firebase-adminsdk.json"
+            sudo chown ubuntu:10001 "$DEPLOY_DIR/secrets/firebase-adminsdk.json"
+            chmod 640 "$DEPLOY_DIR/secrets/firebase-adminsdk.json"
+            FIREBASE_ENABLED="${FIREBASE_ENABLED:-false}"
+
+            docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 ||
+              docker network create "$DOCKER_NETWORK"
+
+            PREVIOUS_IMAGE="$(docker inspect --format='{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null || true)"
+            docker build --tag "$IMAGE_TAG" .
+
+            run_container() {
+              TARGET_IMAGE="$1"
+              docker run -d \
+                --name "$CONTAINER_NAME" \
+                --restart unless-stopped \
+                --network "$DOCKER_NETWORK" \
+                --memory 640m \
+                --cpus 1.0 \
+                -p 127.0.0.1:8082:8080 \
+                -e JAVA_TOOL_OPTIONS="-Xms128m -Xmx384m" \
+                -e DB_URL="$DB_URL" \
+                -e DB_USERNAME="$DB_USERNAME" \
+                -e DB_PASSWORD="$DB_PASSWORD" \
+                -e JWT_SECRET="$JWT_SECRET" \
+                -e FAMILY_INVITATION_BASE_URL="$FAMILY_INVITATION_BASE_URL" \
+                -e FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY="$FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY" \
+                -e KAKAO_REST_API_KEY="$KAKAO_REST_API_KEY" \
+                -e FIREBASE_ENABLED="$FIREBASE_ENABLED" \
+                -e FIREBASE_CREDENTIALS_PATH="/run/secrets/firebase-adminsdk.json" \
+                -e FCM_OUTBOX_BATCH_SIZE="${FCM_OUTBOX_BATCH_SIZE:-50}" \
+                -e FCM_OUTBOX_FIXED_DELAY_MS="${FCM_OUTBOX_FIXED_DELAY_MS:-60000}" \
+                -v "$DEPLOY_DIR/secrets/firebase-adminsdk.json:/run/secrets/firebase-adminsdk.json:ro" \
+                "$TARGET_IMAGE"
+            }
+
+            docker stop "$CONTAINER_NAME" 2>/dev/null || true
+            docker rm "$CONTAINER_NAME" 2>/dev/null || true
+
+            if ! run_container "$IMAGE_TAG"; then
+              if [ -n "$PREVIOUS_IMAGE" ]; then
+                run_container "$PREVIOUS_IMAGE"
+              fi
+              exit 1
+            fi
+
+            HEALTHY=false
+            for ATTEMPT in $(seq 1 60); do
+              if curl --fail --silent http://127.0.0.1:8082/actuator/health >/dev/null; then
+                HEALTHY=true
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$HEALTHY" != "true" ]; then
+              docker logs --tail 150 "$CONTAINER_NAME" || true
+              docker stop "$CONTAINER_NAME" 2>/dev/null || true
+              docker rm "$CONTAINER_NAME" 2>/dev/null || true
+
+              if [ -n "$PREVIOUS_IMAGE" ]; then
+                run_container "$PREVIOUS_IMAGE"
+              fi
+
+              exit 1
+            fi
+
+            docker image prune -af --filter "until=168h"
+
+      - name: Revoke temporary SSH access
+        if: always() && steps.open-ssh.outputs.rule-id != ''
+        shell: bash
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$AWS_PROD_SECURITY_GROUP_ID" \
+            --security-group-rule-ids "${{ steps.open-ssh.outputs.rule-id }}"
+
+      - name: Send deployment status to Discord
+        if: always() && steps.deployment-config.outputs.discord-enabled == 'true'
+        uses: sarisia/actions-status-discord@v1.16.0
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          title: "AWS PROD deploy: ${{ job.status }}"
+          description: "Commit: ${{ github.sha }}\nActor: ${{ github.actor }}"
+          color: ${{ job.status == 'success' && '0x00FF00' || job.status == 'failure' && '0xFF0000' || '0xFFFF00' }}

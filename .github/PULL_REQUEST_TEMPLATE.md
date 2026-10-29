@@ -1,9 +1,3 @@
-name: "Pull Request Template"
-about: 작업한 기능을 명확하게 기록하여 리뷰어가 쉽게 파악할 수 있도록 작성해 주세요.
-title: '[feat/fix/chore 등] 작업 내용 요약'
-labels: ''
-assignees: ''
-
 ---
 
 ## 📌 Summary (작업 요약)
