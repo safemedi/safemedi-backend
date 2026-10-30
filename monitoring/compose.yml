@@ -99,6 +99,7 @@ services:
     user: "1000:1000"
     command:
       - --config.my-cnf=/cfg/.my.cnf
+      - --tls.insecure-skip-verify
     volumes:
       - ./secrets/mysql-exporter.cnf:/cfg/.my.cnf:ro
     networks:
