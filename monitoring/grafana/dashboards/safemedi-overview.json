@@ -1,0 +1,152 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "수집 대상 상태",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "up", "legendFormat": "{{job}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": 0 }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" }
+    },
+    {
+      "type": "timeseries",
+      "title": "EC2 CPU 사용률",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job=\"aws-ec2\",mode=\"idle\"}[5m])))", "legendFormat": "{{instance}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "EC2 메모리 사용률",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)", "legendFormat": "Memory", "refId": "A" },
+        { "expr": "100 * (node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / clamp_min(node_memory_SwapTotal_bytes, 1)", "legendFormat": "Swap", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "루트 디스크 사용률",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})", "legendFormat": "Disk", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "애플리케이션 요청률",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "sum by (job) (rate(http_server_requests_seconds_count{job=~\"safemedi-dev|safemedi-prod\"}[5m]))", "legendFormat": "{{job}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP 5xx 오류 비율",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "100 * sum by (job) (rate(http_server_requests_seconds_count{job=~\"safemedi-dev|safemedi-prod\",status=~\"5..\",uri!~\"/actuator.*\"}[5m])) / clamp_min(sum by (job) (rate(http_server_requests_seconds_count{job=~\"safemedi-dev|safemedi-prod\",uri!~\"/actuator.*\"}[5m])), 0.000001)", "legendFormat": "{{job}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "API 응답 시간 P95/P99",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (job, le) (rate(http_server_requests_seconds_bucket{job=~\"safemedi-dev|safemedi-prod\",uri!~\"/actuator.*\"}[5m])))", "legendFormat": "{{job}} P95", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum by (job, le) (rate(http_server_requests_seconds_bucket{job=~\"safemedi-dev|safemedi-prod\",uri!~\"/actuator.*\"}[5m])))", "legendFormat": "{{job}} P99", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM Heap 사용량",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "sum by (job) (jvm_memory_used_bytes{area=\"heap\",job=~\"safemedi-dev|safemedi-prod\"})", "legendFormat": "{{job}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM 라이브 스레드",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "jvm_threads_live_threads{job=~\"safemedi-dev|safemedi-prod\"}", "legendFormat": "{{job}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "DB 연결 풀",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "hikaricp_connections_active{job=~\"safemedi-dev|safemedi-prod\"}", "legendFormat": "{{job}} active", "refId": "A" },
+        { "expr": "hikaricp_connections_idle{job=~\"safemedi-dev|safemedi-prod\"}", "legendFormat": "{{job}} idle", "refId": "B" },
+        { "expr": "hikaricp_connections_pending{job=~\"safemedi-dev|safemedi-prod\"}", "legendFormat": "{{job}} pending", "refId": "C" },
+        { "expr": "hikaricp_connections_max{job=~\"safemedi-dev|safemedi-prod\"}", "legendFormat": "{{job}} max", "refId": "D" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "SafeMedi 컨테이너 메모리",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "container_memory_working_set_bytes{job=\"docker\",name=~\"/?safemedi-.*\"}", "legendFormat": "{{name}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "MySQL 연결",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
+      "datasource": { "type": "prometheus", "uid": "safemedi-prometheus" },
+      "targets": [
+        { "expr": "mysql_global_status_threads_connected", "legendFormat": "connected", "refId": "A" },
+        { "expr": "mysql_global_status_max_used_connections", "legendFormat": "max used", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 41,
+  "tags": ["safemedi", "monitoring"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "SafeMedi Overview",
+  "uid": "safemedi-overview",
+  "version": 2
+}

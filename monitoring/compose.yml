@@ -1,0 +1,126 @@
+name: safemedi-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    container_name: safemedi-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=3d
+      - --storage.tsdb.retention.size=1GB
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - monitoring
+      - safemedi-dev
+      - safemedi-prod
+    mem_limit: 256m
+    cpus: 0.40
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  grafana:
+    image: grafana/grafana:13.3.0
+    container_name: safemedi-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    env_file:
+      - ./secrets/grafana.env
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - monitoring
+    mem_limit: 256m
+    cpus: 0.40
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: safemedi-node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - monitoring
+    mem_limit: 64m
+    cpus: 0.15
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.6
+    container_name: safemedi-cadvisor
+    restart: unless-stopped
+    privileged: true
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    networks:
+      - monitoring
+    mem_limit: 128m
+    cpus: 0.25
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.20.0
+    container_name: safemedi-mysqld-exporter
+    restart: unless-stopped
+    user: "1000:1000"
+    command:
+      - --config.my-cnf=/cfg/.my.cnf
+      - --tls.insecure-skip-verify
+    volumes:
+      - ./secrets/mysql-exporter.cnf:/cfg/.my.cnf:ro
+    networks:
+      - monitoring
+    mem_limit: 64m
+    cpus: 0.15
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  monitoring:
+    name: safemedi-monitoring-network
+  safemedi-dev:
+    external: true
+    name: safemedi-dev-network
+  safemedi-prod:
+    external: true
+    name: safemedi-prod-network
