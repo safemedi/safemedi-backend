@@ -45,3 +45,7 @@ application-secret.yml
 firebase-adminsdk.json
 *firebase-adminsdk*.json
 *service-account*.json
+
+### Monitoring secrets ###
+monitoring/secrets/
+monitoring/README.md
