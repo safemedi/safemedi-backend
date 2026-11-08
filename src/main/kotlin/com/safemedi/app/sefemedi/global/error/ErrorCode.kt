@@ -15,7 +15,7 @@ enum class ErrorCode(
     INVALID_NICKNAME_LENGTH(
         HttpStatus.BAD_REQUEST,
         "VAL_001",
-        "닉네임은 최소 5자, 최대 20자 입력 가능합니다.",
+        "닉네임은 최소 2자, 최대 20자 입력 가능합니다.",
     ),
     INVALID_ENUM_VALUE(
         HttpStatus.BAD_REQUEST,
