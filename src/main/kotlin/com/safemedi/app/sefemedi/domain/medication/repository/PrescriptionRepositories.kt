@@ -158,6 +158,27 @@ interface MedicationRecordRepository : JpaRepository<MedicationRecord, Long> {
 
     @Query(
         """
+        select mr.user.id as userId,
+               count(mr) as totalCount,
+               sum(case when mr.status = :successStatus then 1 else 0 end) as successCount
+        from MedicationRecord mr
+        join mr.prescription p
+        join mr.prescriptionDrugTime pdt
+        where mr.scheduledAt >= :startAt
+          and mr.scheduledAt <= :endAt
+          and p.deletedAt is null
+          and pdt.deletedAt is null
+        group by mr.user.id
+        """
+    )
+    fun findAdherenceSummaries(
+        @Param("startAt") startAt: LocalDateTime,
+        @Param("endAt") endAt: LocalDateTime,
+        @Param("successStatus") successStatus: MedicationStatus,
+    ): List<MedicationAdherenceSummary>
+
+    @Query(
+        """
         select mr.user.id
         from MedicationRecord mr
         join mr.prescription p
@@ -343,4 +364,10 @@ interface MedicationRecordRepository : JpaRepository<MedicationRecord, Long> {
     fun deleteAllByUserId(
         @Param("userId") userId: Long,
     ): Int
+}
+
+interface MedicationAdherenceSummary {
+    val userId: Long
+    val totalCount: Long
+    val successCount: Long
 }

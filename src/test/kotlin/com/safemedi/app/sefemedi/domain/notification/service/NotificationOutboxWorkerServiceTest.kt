@@ -223,6 +223,22 @@ class NotificationOutboxWorkerServiceTest {
         assertEquals(1, notificationPushSender.requests.size)
     }
 
+    @Test
+    fun `주간 알림 생성 이후 본인 알림을 끄면 발송하지 않는다`() {
+        val now = LocalDateTime.of(2026, 11, 22, 22, 0)
+        val outbox = notificationOutbox(NotificationType.WEEKLY_MEDICATION_SUMMARY)
+        val device = userDevice().apply { isMyReminderOn = false }
+        givenDueOutboxes(now, listOf(outbox))
+        given(userDeviceRepository.findFirstByUser_IdAndIsActiveTrueOrderByCreatedAtDesc(1L)).willReturn(device)
+        given(userDeviceRepository.findById(20L)).willReturn(Optional.of(device))
+        given(notificationOutboxRepository.findById(10L)).willReturn(Optional.of(outbox))
+
+        notificationOutboxWorkerService.processDueOutboxes(now, batchSize = 50)
+
+        assertEquals(NotificationOutboxStatus.DEAD, outbox.status)
+        assertEquals(0, notificationPushSender.requests.size)
+    }
+
     private fun givenDueOutboxes(
         now: LocalDateTime,
         outboxes: List<NotificationOutbox>,

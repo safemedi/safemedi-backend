@@ -153,6 +153,7 @@ class NotificationOutboxWorkerService(
     }
 
     private fun isDeliveryAllowed(target: OutboxSendTarget, device: UserDevice): Boolean {
+        if (target.type == NotificationType.WEEKLY_MEDICATION_SUMMARY) return device.isMyReminderOn
         if (target.type != NotificationType.FAMILY_MEDICATION_MISSED) return true
         if (!device.isFamilyReminderOn || !device.isMissedAlertOn) return false
         val familyId = target.familyId ?: return false
