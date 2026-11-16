@@ -13,6 +13,26 @@ interface FamilyRepository : JpaRepository<Family, Long> {
 
     @Query(
         """
+        select f
+        from Family f
+        join fetch f.user
+        join fetch f.connectedUser
+        where f.connectedUser.id in :userIds
+          and f.isReceiveAlert = true
+          and exists (
+              select reverse.id from Family reverse
+              where reverse.user = f.connectedUser
+                and reverse.connectedUser = f.user
+                and reverse.isAllowMyInfo = true
+          )
+        """
+    )
+    fun findMissedMedicationAlertRecipients(
+        @Param("userIds") userIds: Collection<Long>,
+    ): List<Family>
+
+    @Query(
+        """
         select count(f)
         from Family f
         where (f.user.id = :firstUserId and f.connectedUser.id = :secondUserId)
