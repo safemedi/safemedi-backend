@@ -1,5 +1,7 @@
 package com.safemedi.app.sefemedi.domain.notification.service
 
+import com.safemedi.app.sefemedi.domain.family.entity.Family
+import com.safemedi.app.sefemedi.domain.family.repository.FamilyRepository
 import com.safemedi.app.sefemedi.domain.notification.entity.NotificationLog
 import com.safemedi.app.sefemedi.domain.notification.entity.NotificationOutbox
 import com.safemedi.app.sefemedi.domain.notification.entity.NotificationOutboxStatus
@@ -30,6 +32,7 @@ import kotlin.test.assertEquals
 class NotificationOutboxWorkerServiceTest {
 
     private lateinit var notificationOutboxRepository: NotificationOutboxRepository
+    private lateinit var familyRepository: FamilyRepository
     private lateinit var userDeviceRepository: UserDeviceRepository
     private lateinit var notificationPushSender: FakeNotificationPushSender
     private lateinit var notificationOutboxWorkerService: NotificationOutboxWorkerService
@@ -43,10 +46,12 @@ class NotificationOutboxWorkerServiceTest {
     fun setUp() {
         notificationOutboxRepository = mock(NotificationOutboxRepository::class.java)
         userDeviceRepository = mock(UserDeviceRepository::class.java)
+        familyRepository = mock(FamilyRepository::class.java)
         notificationPushSender = FakeNotificationPushSender()
         notificationOutboxWorkerService = NotificationOutboxWorkerService(
             notificationOutboxRepository = notificationOutboxRepository,
             userDeviceRepository = userDeviceRepository,
+            familyRepository = familyRepository,
             notificationPushSender = notificationPushSender,
             transactionTemplate = TransactionTemplate(NoOpTransactionManager()),
         )
@@ -185,6 +190,37 @@ class NotificationOutboxWorkerServiceTest {
 
         assertEquals(NotificationOutboxStatus.DEAD, outbox.status)
         assertEquals(0, notificationPushSender.requests.size)
+    }
+
+    @Test
+    fun `가족 미복약 알림은 발송 직전 수신 설정과 공유 상태 및 연결을 다시 확인한다`() {
+        val now = LocalDateTime.of(2026, 6, 29, 22, 0)
+        val member = User(id = 2L, socialId = "member")
+        val family = Family(id = 500L, user = user, connectedUser = member, relation = "가족")
+        val reverse = Family(id = 501L, user = member, connectedUser = user, relation = "가족")
+        val device = userDevice()
+        given(userDeviceRepository.findById(20L)).willReturn(Optional.of(device))
+        given(userDeviceRepository.findFirstByUser_IdAndIsActiveTrueOrderByCreatedAtDesc(1L)).willReturn(device)
+        given(familyRepository.findByIdAndUser_Id(500L, 1L)).willReturn(family)
+        given(familyRepository.findByUser_IdAndConnectedUser_Id(2L, 1L)).willReturn(reverse)
+
+        // 생성 이후 설정 변경, 공유 중단, 연결 해제를 각각 재현한다.
+        for (scenario in 0..5) {
+            device.isMissedAlertOn = scenario != 0
+            device.isFamilyReminderOn = scenario != 1
+            family.isReceiveAlert = scenario != 2
+            reverse.isAllowMyInfo = scenario != 3
+            given(familyRepository.findByIdAndUser_Id(500L, 1L))
+                .willReturn(if (scenario == 4) null else family)
+            val outbox = notificationOutbox(NotificationType.FAMILY_MEDICATION_MISSED)
+            givenDueOutboxes(now, listOf(outbox))
+            given(notificationOutboxRepository.findById(10L)).willReturn(Optional.of(outbox))
+
+            notificationOutboxWorkerService.processDueOutboxes(now, batchSize = 50)
+
+            assertEquals(if (scenario == 5) NotificationOutboxStatus.SENT else NotificationOutboxStatus.DEAD, outbox.status)
+        }
+        assertEquals(1, notificationPushSender.requests.size)
     }
 
     private fun givenDueOutboxes(

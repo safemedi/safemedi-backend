@@ -98,6 +98,7 @@ class NotificationCreateService(
     ): Boolean {
         return when (type) {
             NotificationType.MEDICATION_REMINDER -> latestDevice.isMyReminderOn
+            NotificationType.FAMILY_MEDICATION_MISSED -> latestDevice.isFamilyReminderOn && latestDevice.isMissedAlertOn
             NotificationType.FAMILY_CONNECTED,
             NotificationType.FAMILY_DISCONNECTED -> latestDevice.isFamilyReminderOn
             NotificationType.MEDICATION_COMPLETED -> false

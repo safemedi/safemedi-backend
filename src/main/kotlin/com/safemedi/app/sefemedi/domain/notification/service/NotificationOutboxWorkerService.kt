@@ -1,5 +1,6 @@
 package com.safemedi.app.sefemedi.domain.notification.service
 
+import com.safemedi.app.sefemedi.domain.family.repository.FamilyRepository
 import com.safemedi.app.sefemedi.domain.notification.entity.NotificationOutbox
 import com.safemedi.app.sefemedi.domain.notification.entity.NotificationOutboxStatus
 import com.safemedi.app.sefemedi.domain.notification.entity.NotificationType
@@ -8,6 +9,7 @@ import com.safemedi.app.sefemedi.domain.notification.fcm.NotificationPushResult
 import com.safemedi.app.sefemedi.domain.notification.fcm.NotificationPushSender
 import com.safemedi.app.sefemedi.domain.notification.fcm.NotificationPushStatus
 import com.safemedi.app.sefemedi.domain.notification.repository.NotificationOutboxRepository
+import com.safemedi.app.sefemedi.domain.user.entity.UserDevice
 import com.safemedi.app.sefemedi.domain.user.repository.UserDeviceRepository
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.data.domain.PageRequest
@@ -21,6 +23,7 @@ import java.time.LocalDateTime
 class NotificationOutboxWorkerService(
     private val notificationOutboxRepository: NotificationOutboxRepository,
     private val userDeviceRepository: UserDeviceRepository,
+    private val familyRepository: FamilyRepository,
     private val notificationPushSender: NotificationPushSender,
     private val transactionTemplate: TransactionTemplate,
 ) {
@@ -111,6 +114,8 @@ class NotificationOutboxWorkerService(
             title = outbox.notificationLog.title,
             body = outbox.notificationLog.message,
             data = createData(outbox),
+            type = outbox.notificationLog.type,
+            familyId = outbox.notificationLog.targetId,
         )
     }
 
@@ -121,7 +126,8 @@ class NotificationOutboxWorkerService(
         val isCurrentTarget = transactionTemplate.execute {
             val device = userDeviceRepository.findById(target.deviceId).orElse(null)
             val valid = device != null && device.isActive &&
-                device.user.id == target.userId && device.deviceToken == target.token
+                device.user.id == target.userId && device.deviceToken == target.token &&
+                isDeliveryAllowed(target, device)
             if (!valid) {
                 findOutboxOrNull(target.outboxId)?.markDead()
             }
@@ -144,6 +150,16 @@ class NotificationOutboxWorkerService(
             NotificationPushStatus.TEMPORARY_FAILURE -> completeTemporaryFailure(target, result, now)
             NotificationPushStatus.PERMANENT_FAILURE -> completePermanentFailure(target, result)
         }
+    }
+
+    private fun isDeliveryAllowed(target: OutboxSendTarget, device: UserDevice): Boolean {
+        if (target.type != NotificationType.FAMILY_MEDICATION_MISSED) return true
+        if (!device.isFamilyReminderOn || !device.isMissedAlertOn) return false
+        val familyId = target.familyId ?: return false
+        val family = familyRepository.findByIdAndUser_Id(familyId, target.userId) ?: return false
+        if (!family.isReceiveAlert) return false
+        val memberId = family.connectedUser.id ?: return false
+        return familyRepository.findByUser_IdAndConnectedUser_Id(memberId, target.userId)?.isAllowMyInfo == true
     }
 
     private fun completeSuccess(
@@ -270,5 +286,7 @@ class NotificationOutboxWorkerService(
         val title: String,
         val body: String,
         val data: Map<String, String>,
+        val type: NotificationType,
+        val familyId: Long?,
     )
 }

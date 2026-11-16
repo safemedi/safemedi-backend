@@ -155,6 +155,27 @@ interface PrescriptionDrugTimeRepository : JpaRepository<PrescriptionDrugTime, L
 }
 
 interface MedicationRecordRepository : JpaRepository<MedicationRecord, Long> {
+
+    @Query(
+        """
+        select mr.user.id
+        from MedicationRecord mr
+        join mr.prescription p
+        join mr.prescriptionDrugTime pdt
+        where mr.scheduledAt >= :startAt
+          and mr.scheduledAt <= :endAt
+          and p.deletedAt is null
+          and pdt.deletedAt is null
+        group by mr.user.id
+        having sum(case when mr.status = :successStatus then 1 else 0 end) * 5 < count(mr) * 4
+        """
+    )
+    fun findUserIdsWithLowAdherence(
+        @Param("startAt") startAt: LocalDateTime,
+        @Param("endAt") endAt: LocalDateTime,
+        @Param("successStatus") successStatus: MedicationStatus,
+    ): List<Long>
+
     @Query(
         """
         select mr
