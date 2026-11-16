@@ -5,10 +5,6 @@ import com.safemedi.app.sefemedi.domain.medication.dto.MedicationRecordUpdateRes
 import com.safemedi.app.sefemedi.domain.medication.entity.MedicationRecord
 import com.safemedi.app.sefemedi.domain.medication.entity.MedicationStatus
 import com.safemedi.app.sefemedi.domain.medication.repository.MedicationRecordRepository
-import com.safemedi.app.sefemedi.domain.notification.dto.NotificationCreateCommand
-import com.safemedi.app.sefemedi.domain.notification.entity.NotificationTargetType
-import com.safemedi.app.sefemedi.domain.notification.entity.NotificationType
-import com.safemedi.app.sefemedi.domain.notification.service.NotificationCreateService
 import com.safemedi.app.sefemedi.domain.user.repository.UserRepository
 import com.safemedi.app.sefemedi.global.error.BusinessException
 import com.safemedi.app.sefemedi.global.error.ErrorCode
@@ -21,7 +17,6 @@ import java.time.ZoneId
 class MedicationRecordUpdateService(
     private val userRepository: UserRepository,
     private val medicationRecordRepository: MedicationRecordRepository,
-    private val notificationCreateService: NotificationCreateService,
 ) {
     @Transactional
     fun update(
@@ -62,9 +57,6 @@ class MedicationRecordUpdateService(
                 takenAt = takenAt,
             )
         }
-        if (request.status == MedicationStatus.SUCCESS) {
-            createMedicationCompletedNotification(records)
-        }
 
         return records.toResponse()
     }
@@ -101,28 +93,6 @@ class MedicationRecordUpdateService(
             drugNames = map { it.prescriptionDrugTime.prescriptionDrug.drugName }.distinct(),
             takenAt = firstRecord.takenAt,
             status = firstRecord.status.name,
-        )
-    }
-
-    private fun createMedicationCompletedNotification(
-        records: List<MedicationRecord>,
-    ) {
-        val firstRecord = records.first()
-        val prescriptionId = firstRecord.prescription.id ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR)
-        val userId = firstRecord.user.id ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR)
-        val drugNames = records.map { it.prescriptionDrugTime.prescriptionDrug.drugName }.distinct()
-
-        notificationCreateService.create(
-            NotificationCreateCommand(
-                userId = userId,
-                type = NotificationType.MEDICATION_COMPLETED,
-                title = "복약 완료",
-                content = "${drugNames.joinToString(", ")} 복용을 완료했어요",
-                targetType = NotificationTargetType.PRESCRIPTION,
-                targetId = prescriptionId,
-                deduplicationKey = "MEDICATION_COMPLETED:PRESCRIPTION:$prescriptionId:${firstRecord.scheduledAt}:$userId",
-                scheduledAt = firstRecord.takenAt,
-            )
         )
     }
 

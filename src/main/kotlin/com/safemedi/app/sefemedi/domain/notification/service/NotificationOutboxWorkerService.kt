@@ -2,6 +2,7 @@ package com.safemedi.app.sefemedi.domain.notification.service
 
 import com.safemedi.app.sefemedi.domain.notification.entity.NotificationOutbox
 import com.safemedi.app.sefemedi.domain.notification.entity.NotificationOutboxStatus
+import com.safemedi.app.sefemedi.domain.notification.entity.NotificationType
 import com.safemedi.app.sefemedi.domain.notification.fcm.NotificationPushRequest
 import com.safemedi.app.sefemedi.domain.notification.fcm.NotificationPushResult
 import com.safemedi.app.sefemedi.domain.notification.fcm.NotificationPushSender
@@ -60,6 +61,10 @@ class NotificationOutboxWorkerService(
     private fun claimOutbox(
         outbox: NotificationOutbox,
     ): OutboxSendTarget? {
+        if (outbox.notificationLog.type == NotificationType.MEDICATION_COMPLETED) {
+            outbox.markDead()
+            return null
+        }
         outbox.markProcessing()
 
         val userId = outbox.user.id

@@ -175,6 +175,18 @@ class NotificationOutboxWorkerServiceTest {
         assertEquals(NotificationOutboxStatus.DEAD, outbox.status)
     }
 
+    @Test
+    fun `기존에 대기중인 복약 완료 알림도 발송하지 않는다`() {
+        val now = LocalDateTime.of(2026, 6, 29, 9, 0)
+        val outbox = notificationOutbox(NotificationType.MEDICATION_COMPLETED)
+        givenDueOutboxes(now, listOf(outbox))
+
+        notificationOutboxWorkerService.processDueOutboxes(now, batchSize = 50)
+
+        assertEquals(NotificationOutboxStatus.DEAD, outbox.status)
+        assertEquals(0, notificationPushSender.requests.size)
+    }
+
     private fun givenDueOutboxes(
         now: LocalDateTime,
         outboxes: List<NotificationOutbox>,
@@ -189,11 +201,11 @@ class NotificationOutboxWorkerServiceTest {
         ).willReturn(outboxes)
     }
 
-    private fun notificationOutbox(): NotificationOutbox {
+    private fun notificationOutbox(type: NotificationType = NotificationType.MEDICATION_REMINDER): NotificationOutbox {
         val notificationLog = NotificationLog(
             id = 100L,
             user = user,
-            type = NotificationType.MEDICATION_REMINDER,
+            type = type,
             title = "Medication reminder",
             message = "Time to take medicine",
             targetType = NotificationTargetType.MEDICATION_RECORD,
