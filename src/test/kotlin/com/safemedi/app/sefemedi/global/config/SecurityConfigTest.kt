@@ -27,4 +27,15 @@ class SecurityConfigTest {
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
             .andExpect(jsonPath("$[0].target.package_name").value("com.safemedi"))
     }
+
+    @Test
+    fun `Prometheus 메트릭은 인증 없이 조회할 수 있다`() {
+        mockMvc.perform(get("/actuator/health"))
+            .andExpect(status().isOk)
+
+        mockMvc.perform(get("/actuator/prometheus"))
+            .andExpect(status().isOk)
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("jvm_")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("http_server_requests_seconds_bucket")))
+    }
 }

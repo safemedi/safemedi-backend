@@ -242,7 +242,7 @@ class UserService(
 
     private fun validateNickname(nickname: String): String {
         val trimmedNickname = nickname.trim()
-        if (trimmedNickname.length !in 5..20) {
+        if (trimmedNickname.length !in 2..20) {
             throw BusinessException(ErrorCode.INVALID_NICKNAME_LENGTH)
         }
 

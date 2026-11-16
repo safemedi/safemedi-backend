@@ -29,6 +29,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.ArgumentCaptor
 import org.mockito.BDDMockito.given
 import org.mockito.Mockito.mock
@@ -249,8 +251,9 @@ class UserProfileUpdateServiceTest {
         )
     }
 
-    @Test
-    fun `updateMyProfile throws INVALID_NICKNAME_LENGTH when nickname is too short`() {
+    @ParameterizedTest
+    @ValueSource(strings = ["", "   ", "홍", " 홍 ", "가나다라마바사아자차카타파하가나다라마바사"])
+    fun `공백 제거 후 닉네임이 2자 미만이거나 20자를 초과하면 거부한다`(nickname: String) {
         val user = User(
             id = 1L,
             socialId = "4903042739",
@@ -262,12 +265,31 @@ class UserProfileUpdateServiceTest {
             userService.updateMyProfile(
                 socialId = "4903042739",
                 request = UserProfileUpdateRequest(
-                    nickname = "홍길",
+                    nickname = nickname,
                 ),
             )
         }
 
         assertEquals(ErrorCode.INVALID_NICKNAME_LENGTH, exception.errorCode)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["홍길", "홍길동", "  홍길  ", "가나다라마바사아자차카타파하가나다라마바"])
+    fun `공백 제거 후 2자부터 20자까지 닉네임을 저장하고 반환한다`(nickname: String) {
+        val user = User(id = 1L, socialId = "4903042739")
+        given(userRepository.findBySocialId("4903042739")).willReturn(user)
+        given(userHealthProfileRepository.findById(1L)).willReturn(Optional.empty())
+        given(userDiseaseMapRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(emptyList())
+        given(userAllergyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(emptyList())
+        given(familyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(emptyList())
+
+        val response = userService.updateMyProfile(
+            socialId = "4903042739",
+            request = UserProfileUpdateRequest(nickname = nickname),
+        )
+
+        assertEquals(nickname.trim(), user.nickname)
+        assertEquals(nickname.trim(), response.nickname)
     }
 
     @Test

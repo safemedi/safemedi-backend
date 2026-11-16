@@ -45,6 +45,10 @@ firebase:
     fixed-delay-ms: ${FCM_OUTBOX_FIXED_DELAY_MS:60000}
 
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:

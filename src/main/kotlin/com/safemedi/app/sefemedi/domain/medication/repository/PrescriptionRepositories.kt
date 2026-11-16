@@ -155,6 +155,48 @@ interface PrescriptionDrugTimeRepository : JpaRepository<PrescriptionDrugTime, L
 }
 
 interface MedicationRecordRepository : JpaRepository<MedicationRecord, Long> {
+
+    @Query(
+        """
+        select mr.user.id as userId,
+               count(mr) as totalCount,
+               sum(case when mr.status = :successStatus then 1 else 0 end) as successCount
+        from MedicationRecord mr
+        join mr.prescription p
+        join mr.prescriptionDrugTime pdt
+        where mr.scheduledAt >= :startAt
+          and mr.scheduledAt <= :endAt
+          and (p.deletedAt is null or mr.scheduledAt <= p.deletedAt)
+          and (pdt.deletedAt is null or mr.scheduledAt <= pdt.deletedAt)
+        group by mr.user.id
+        """
+    )
+    fun findAdherenceSummaries(
+        @Param("startAt") startAt: LocalDateTime,
+        @Param("endAt") endAt: LocalDateTime,
+        @Param("successStatus") successStatus: MedicationStatus,
+    ): List<MedicationAdherenceSummary>
+
+    @Query(
+        """
+        select mr.user.id
+        from MedicationRecord mr
+        join mr.prescription p
+        join mr.prescriptionDrugTime pdt
+        where mr.scheduledAt >= :startAt
+          and mr.scheduledAt <= :endAt
+          and (p.deletedAt is null or mr.scheduledAt <= p.deletedAt)
+          and (pdt.deletedAt is null or mr.scheduledAt <= pdt.deletedAt)
+        group by mr.user.id
+        having sum(case when mr.status = :successStatus then 1 else 0 end) * 5 < count(mr) * 4
+        """
+    )
+    fun findUserIdsWithLowAdherence(
+        @Param("startAt") startAt: LocalDateTime,
+        @Param("endAt") endAt: LocalDateTime,
+        @Param("successStatus") successStatus: MedicationStatus,
+    ): List<Long>
+
     @Query(
         """
         select mr
@@ -322,4 +364,10 @@ interface MedicationRecordRepository : JpaRepository<MedicationRecord, Long> {
     fun deleteAllByUserId(
         @Param("userId") userId: Long,
     ): Int
+}
+
+interface MedicationAdherenceSummary {
+    val userId: Long
+    val totalCount: Long
+    val successCount: Long
 }
