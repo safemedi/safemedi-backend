@@ -119,6 +119,42 @@ class WeeklyMedicationSummaryServiceTest @Autowired constructor(
         assertEquals(0L, outboxes.count())
     }
 
+    @Test
+    fun `복약 시간 변경 전의 미복약 기록도 포함하여 주간 복약률을 유지한다`() {
+        val member = user("복약자")
+        record(member, MedicationStatus.SUCCESS)
+        repeat(4) {
+            val missed = record(member, MedicationStatus.PENDING, now.minusDays(1))
+            missed.prescriptionDrugTime.delete(now.minusHours(1))
+        }
+
+        service.create(now)
+
+        val notification = logs.findAll().single()
+        assertTrue(notification.message.startsWith("이번 주 복약률은 20%예요."))
+        assertTrue(notification.message.contains("복약 관리에 주의가 필요해요"))
+    }
+
+    @Test
+    fun `처방 삭제 이전 기록은 보존하고 삭제 시점 이후 예정은 주간 집계에서 제외한다`() {
+        val member = user("복약자")
+        val deletionTime = now.minusHours(1)
+        val completed = record(member, MedicationStatus.SUCCESS, deletionTime)
+        completed.prescription.delete(deletionTime)
+        completed.prescriptionDrugTime.delete(deletionTime)
+        val missed = record(member, MedicationStatus.SKIP, deletionTime.minusHours(1))
+        missed.prescription.delete(deletionTime)
+        // 취소된 미래 일정은 남아 있더라도 분모에 포함하지 않는다.
+        record(member, MedicationStatus.PENDING, now, deletedPrescription = true)
+        record(member, MedicationStatus.PENDING, now, deletedTime = true)
+
+        service.create(now)
+
+        val notification = logs.findAll().single()
+        assertTrue(notification.message.startsWith("이번 주 복약률은 50%예요."))
+        assertTrue(notification.message.contains("조금 더 노력해 볼까요?"))
+    }
+
     private fun user(nickname: String, reminder: Boolean = true, active: Boolean = true): User {
         val user = User(socialId = "weekly-${sequence++}", nickname = nickname)
         entityManager.persist(user)
@@ -138,14 +174,14 @@ class WeeklyMedicationSummaryServiceTest @Autowired constructor(
     ): MedicationRecord {
         val prescription = Prescription(
             user = user, title = "처방", startDate = now.toLocalDate(), endDate = now.toLocalDate(),
-            deletedAt = if (deletedPrescription) now else null,
+            deletedAt = if (deletedPrescription) scheduledAt.minusSeconds(1) else null,
         )
         entityManager.persist(prescription)
         val drug = PrescriptionDrug(prescription = prescription, drugName = "약")
         entityManager.persist(drug)
         val time = PrescriptionDrugTime(
             prescriptionDrug = drug, takeTime = scheduledAt.toLocalTime(),
-            deletedAt = if (deletedTime) now else null,
+            deletedAt = if (deletedTime) scheduledAt.minusSeconds(1) else null,
         )
         entityManager.persist(time)
         val record = MedicationRecord(

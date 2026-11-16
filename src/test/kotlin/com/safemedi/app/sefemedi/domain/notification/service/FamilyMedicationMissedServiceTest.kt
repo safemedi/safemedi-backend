@@ -164,6 +164,40 @@ class FamilyMedicationMissedServiceTest @Autowired constructor(
         assertEquals(0L, logs.count())
     }
 
+    @Test
+    fun `복약 시간 변경 전의 미복약 기록도 포함하여 가족에게 알린다`() {
+        val recipient = user("수신자")
+        val member = user("가족원")
+        connect(recipient, member)
+        record(member, MedicationStatus.SUCCESS)
+        repeat(4) {
+            val missed = record(member, MedicationStatus.PENDING, now.minusHours(3))
+            missed.prescriptionDrugTime.delete(now.minusHours(1))
+        }
+
+        service.create(now)
+
+        assertEquals(recipient.id, logs.findAll().single().user.id)
+        assertEquals(1L, outboxes.count())
+    }
+
+    @Test
+    fun `처방 삭제 이전 미복약 기록은 가족 알림 집계에 남는다`() {
+        val recipient = user("수신자")
+        val member = user("가족원")
+        connect(recipient, member)
+        val deletionTime = now.minusHours(1)
+        val completed = record(member, MedicationStatus.SUCCESS, deletionTime)
+        completed.prescription.delete(deletionTime)
+        completed.prescriptionDrugTime.delete(deletionTime)
+        val missed = record(member, MedicationStatus.FAIL, deletionTime.minusHours(1))
+        missed.prescription.delete(deletionTime)
+
+        service.create(now)
+
+        assertEquals(recipient.id, logs.findAll().single().user.id)
+    }
+
     private fun user(nickname: String, missed: Boolean = true, family: Boolean = true, active: Boolean = true): User {
         val user = User(socialId = "missed-${sequence++}", nickname = nickname)
         entityManager.persist(user)
@@ -190,14 +224,14 @@ class FamilyMedicationMissedServiceTest @Autowired constructor(
     ): MedicationRecord {
         val prescription = Prescription(
             user = user, title = "처방", startDate = now.toLocalDate(), endDate = now.toLocalDate(),
-            deletedAt = if (deletedPrescription) now else null,
+            deletedAt = if (deletedPrescription) scheduledAt.minusSeconds(1) else null,
         )
         entityManager.persist(prescription)
         val drug = PrescriptionDrug(prescription = prescription, drugName = "약")
         entityManager.persist(drug)
         val time = PrescriptionDrugTime(
             prescriptionDrug = drug, takeTime = scheduledAt.toLocalTime(),
-            deletedAt = if (deletedTime) now else null,
+            deletedAt = if (deletedTime) scheduledAt.minusSeconds(1) else null,
         )
         entityManager.persist(time)
         val record = MedicationRecord(

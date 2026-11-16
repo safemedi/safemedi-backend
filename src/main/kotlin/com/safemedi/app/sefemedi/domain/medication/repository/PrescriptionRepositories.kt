@@ -166,8 +166,8 @@ interface MedicationRecordRepository : JpaRepository<MedicationRecord, Long> {
         join mr.prescriptionDrugTime pdt
         where mr.scheduledAt >= :startAt
           and mr.scheduledAt <= :endAt
-          and p.deletedAt is null
-          and pdt.deletedAt is null
+          and (p.deletedAt is null or mr.scheduledAt <= p.deletedAt)
+          and (pdt.deletedAt is null or mr.scheduledAt <= pdt.deletedAt)
         group by mr.user.id
         """
     )
@@ -185,8 +185,8 @@ interface MedicationRecordRepository : JpaRepository<MedicationRecord, Long> {
         join mr.prescriptionDrugTime pdt
         where mr.scheduledAt >= :startAt
           and mr.scheduledAt <= :endAt
-          and p.deletedAt is null
-          and pdt.deletedAt is null
+          and (p.deletedAt is null or mr.scheduledAt <= p.deletedAt)
+          and (pdt.deletedAt is null or mr.scheduledAt <= pdt.deletedAt)
         group by mr.user.id
         having sum(case when mr.status = :successStatus then 1 else 0 end) * 5 < count(mr) * 4
         """
