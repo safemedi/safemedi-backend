@@ -13,6 +13,18 @@ class GlobalExceptionHandler {
 
     private val log = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException::class)
+    fun handleImageTooLarge(): ResponseEntity<ErrorResponse> {
+        val error = ErrorCode.IMAGE_TOO_LARGE
+        return ResponseEntity.status(error.status).body(ErrorResponse(error.code, error.message))
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.support.MissingServletRequestPartException::class)
+    fun handleMissingImage(): ResponseEntity<ErrorResponse> {
+        val error = ErrorCode.INVALID_PRESCRIPTION_IMAGE
+        return ResponseEntity.status(error.status).body(ErrorResponse(error.code, error.message))
+    }
+
     @ExceptionHandler(BusinessException::class)
     fun handleBusinessException(exception: BusinessException): ResponseEntity<ErrorResponse> {
         val errorCode = exception.errorCode

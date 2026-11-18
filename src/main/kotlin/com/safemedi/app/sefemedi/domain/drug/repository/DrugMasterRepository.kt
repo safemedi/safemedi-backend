@@ -6,6 +6,9 @@ import org.springframework.data.domain.Slice
 import org.springframework.data.jpa.repository.JpaRepository
 
 interface DrugMasterRepository : JpaRepository<DrugMaster, String> {
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    fun findByDrugNameStartingWith(prefix: String, pageable: Pageable): Slice<DrugMaster>
+
     fun findByDrugNameContainingAndAtcCodeIsNotNullOrderByDrugNameAsc(
         keyword: String,
         pageable: Pageable,
