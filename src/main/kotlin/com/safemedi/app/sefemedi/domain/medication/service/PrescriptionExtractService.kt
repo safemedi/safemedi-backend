@@ -1,10 +1,12 @@
 package com.safemedi.app.sefemedi.domain.medication.service
 
+import com.safemedi.app.sefemedi.domain.drug.entity.DrugMaster
 import com.safemedi.app.sefemedi.domain.drug.repository.DrugMasterRepository
 import com.safemedi.app.sefemedi.domain.medication.dto.PrescriptionExtractResponse
 import com.safemedi.app.sefemedi.domain.medication.extraction.AiPrescriptionExtractor
 import com.safemedi.app.sefemedi.global.error.BusinessException
 import com.safemedi.app.sefemedi.global.error.ErrorCode
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.web.multipart.MultipartFile
 import java.io.ByteArrayInputStream
@@ -33,22 +35,19 @@ class PrescriptionExtractService(
                 val result = extractor.extract(bytes, mimeType)
                 if (result.medications.isEmpty()) throw BusinessException(ErrorCode.PRESCRIPTION_NOT_READABLE)
                 val names = result.medications.map { it.drugName.trim() }.distinct()
-                val matches = drugs.findByDrugNameIn(names).groupBy { it.drugName }
+                val matches = names.associateWith(::findDrugMatch)
                 val start = parseDate(result.startDate)
                 val end = parseDate(result.endDate)
                 val isValidRange = start != null && end != null && !end.isBefore(start) &&
                     !end.isAfter(start.plusMonths(6))
                 return result.copy(
-                    title = "처방전 스캔 등록",
                     startDate = if (isValidRange) start.toString() else null,
                     endDate = if (isValidRange) end.toString() else null,
                     medications = result.medications.map { medication ->
                         val name = medication.drugName.trim()
-                        val match = matches[name]?.singleOrNull()?.takeIf {
-                            it.drugCode.isNotBlank() && !it.atcCode.isNullOrBlank()
-                        }
+                        val match = matches[name]
                         medication.copy(
-                            drugName = name,
+                            drugName = match?.drugName ?: name,
                             drugCode = match?.drugCode,
                             atcCode = match?.atcCode?.takeIf { it.isNotBlank() },
                         )
@@ -61,6 +60,29 @@ class PrescriptionExtractService(
             activeUsers.remove(socialId)
         }
     }
+
+    private fun findDrugMatch(name: String): DrugMaster? {
+        val prefix = name.substringBefore('(').trimEnd().replace(TRAILING_STRENGTH, "").trimEnd()
+        if (prefix.isBlank()) return null
+
+        val candidates = drugs.findByDrugNameStartingWith(prefix, PageRequest.of(0, 100))
+        if (candidates.hasNext()) return null
+
+        val normalized = normalizeDrugName(name)
+        val matches = candidates.content.filter { candidate ->
+            val candidateName = candidate.drugName ?: return@filter false
+            val comparable = if ('(' in name) candidateName else candidateName.replace(INGREDIENT_SUFFIX, "")
+            normalizeDrugName(comparable) == normalized
+        }
+        return matches.singleOrNull()?.takeIf {
+            it.drugCode.isNotBlank() && !it.atcCode.isNullOrBlank()
+        }
+    }
+
+    private fun normalizeDrugName(name: String): String = name
+        .replace(WHITESPACE, "")
+        .lowercase()
+        .replace(MILLIGRAM_AFTER_NUMBER, "mg")
 
     private fun parseDate(value: String?): LocalDate? = try {
         value?.let(LocalDate::parse)
@@ -92,5 +114,11 @@ class PrescriptionExtractService(
         }
     }
 
-    private companion object { const val MAX_IMAGE_BYTES = 6 * 1024 * 1024 }
+    private companion object {
+        const val MAX_IMAGE_BYTES = 6 * 1024 * 1024
+        val TRAILING_STRENGTH = Regex("""[0-9]+(?:\.[0-9]+)?\s*(?:mg|밀리그램)$""", RegexOption.IGNORE_CASE)
+        val INGREDIENT_SUFFIX = Regex("""\s*\([^()]+\)\s*$""")
+        val WHITESPACE = Regex("""\s+""")
+        val MILLIGRAM_AFTER_NUMBER = Regex("""(?<=[0-9])밀리그램""")
+    }
 }

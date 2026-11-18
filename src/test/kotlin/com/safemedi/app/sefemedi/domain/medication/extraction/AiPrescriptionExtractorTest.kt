@@ -4,17 +4,31 @@ import com.safemedi.app.sefemedi.global.error.BusinessException
 import com.safemedi.app.sefemedi.global.error.ErrorCode
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.json.JsonMapper
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.*
 
 class AiPrescriptionExtractorTest {
     private val mapper = JsonMapper.builder().build()
+    private val clock = Clock.fixed(Instant.parse("2026-11-17T16:00:00Z"), ZoneOffset.UTC)
     private val image = byteArrayOf(1)
-    private fun extractor(json: String) = AiPrescriptionExtractor(mapper, AiImageClient { _, _, _, _ -> json })
+    private fun extractor(json: String) = AiPrescriptionExtractor(mapper, AiImageClient { _, _, _, _ -> json }, clock)
+
+    @Test
+    fun `병원명을 제목으로 쓰고 한국 날짜 기준으로 오늘을 포함한 5일을 계산한다`() {
+        val result = extractor("""
+            {"hospitalName":"테스트의원","durationDays":5,"startDate":null,"endDate":null,"medications":[]}
+        """).extract(image, "image/jpeg")
+        assertEquals("테스트의원", result.title)
+        assertEquals("2026-11-18", result.startDate)
+        assertEquals("2026-11-22", result.endDate)
+    }
 
     @Test
     fun `공급자와 무관하게 4회 복용을 보존하고 AI가 제공한 약품 코드는 무시한다`() {
         val result = extractor("""
-            {"startDate":null,"endDate":null,"medications":[{
+            {"hospitalName":null,"durationDays":null,"startDate":null,"endDate":null,"medications":[{
               "drugName":"테스트정 10mg","dailyDoseCount":4,"instructions":"하루 4회",
               "drugCode":"invented","atcCode":"invented"}]}
         """).extract(image, "image/jpeg")
@@ -26,7 +40,7 @@ class AiPrescriptionExtractorTest {
 
     @Test
     fun `잘못된 숫자 및 누락된 필드는 공통 검증에서 거부한다`() {
-        val valid = """{"startDate":null,"endDate":null,"medications":[{"drugName":"약","dailyDoseCount":2,"instructions":null}]}"""
+        val valid = """{"hospitalName":null,"durationDays":null,"startDate":null,"endDate":null,"medications":[{"drugName":"약","dailyDoseCount":2,"instructions":null}]}"""
         listOf(valid.replace(":2", ":2.5"),
             valid.replace("\"instructions\":null", "\"other\":null"), "not-json").forEach {
             assertEquals(ErrorCode.PRESCRIPTION_NOT_READABLE, assertFailsWith<BusinessException> {
@@ -47,7 +61,7 @@ class AiPrescriptionExtractorTest {
             throw BusinessException(ErrorCode.EXTRACTION_UNAVAILABLE)
         }
         assertEquals(ErrorCode.EXTRACTION_UNAVAILABLE, assertFailsWith<BusinessException> {
-            AiPrescriptionExtractor(mapper, client).extract(image, "image/jpeg")
+            AiPrescriptionExtractor(mapper, client, clock).extract(image, "image/jpeg")
         }.errorCode)
         assertTrue(called)
     }
