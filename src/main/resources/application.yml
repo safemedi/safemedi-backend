@@ -34,8 +34,8 @@ jwt:
 app:
   # 이미지 입력·구조화 출력을 지원하는 AI 모델 ID와 API 키를 배포 환경에서 설정한다.
   prescription-extraction:
-    api-key: ${API_KEY:}
-    model: ${AI_MODEL:}
+    api-key: ${API_KEY}
+    model: ${AI_MODEL}
     timeout-seconds: 30
   test-login:
     enabled: false
