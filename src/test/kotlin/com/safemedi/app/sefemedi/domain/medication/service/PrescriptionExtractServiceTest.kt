@@ -78,7 +78,7 @@ class PrescriptionExtractServiceTest {
     fun `이미지로 위장한 파일과 용량 초과 파일은 AI 호출 전에 거부한다`() {
         listOf(
             MockMultipartFile("image", "fake.jpg", "image/jpeg", "not image".toByteArray()) to ErrorCode.INVALID_PRESCRIPTION_IMAGE,
-            MockMultipartFile("image", ByteArray(6 * 1024 * 1024 + 1)) to ErrorCode.IMAGE_TOO_LARGE,
+            MockMultipartFile("image", ByteArray(10 * 1024 * 1024 + 1)) to ErrorCode.IMAGE_TOO_LARGE,
         ).forEach { (file, expected) ->
             assertEquals(expected, assertFailsWith<BusinessException> { service.extract("user", file) }.errorCode)
         }

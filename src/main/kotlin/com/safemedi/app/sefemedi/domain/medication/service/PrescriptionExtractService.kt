@@ -115,7 +115,7 @@ class PrescriptionExtractService(
     }
 
     private companion object {
-        const val MAX_IMAGE_BYTES = 6 * 1024 * 1024
+        const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
         val TRAILING_STRENGTH = Regex("""[0-9]+(?:\.[0-9]+)?\s*(?:mg|밀리그램)$""", RegexOption.IGNORE_CASE)
         val INGREDIENT_SUFFIX = Regex("""\s*\([^()]+\)\s*$""")
         val WHITESPACE = Regex("""\s+""")

@@ -8,7 +8,7 @@ enum class ErrorCode(
     val message: String,
 ) {
     INVALID_PRESCRIPTION_IMAGE(HttpStatus.BAD_REQUEST, "SCAN_001", "JPEG 또는 PNG 이미지를 다시 선택해 주세요."),
-    IMAGE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "SCAN_002", "이미지는 6MB 이하로 업로드해 주세요."),
+    IMAGE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "SCAN_002", "이미지는 10MB 이하로 업로드해 주세요."),
     PRESCRIPTION_NOT_READABLE(HttpStatus.UNPROCESSABLE_ENTITY, "SCAN_003", "처방전 정보를 읽지 못했습니다. 선명한 사진으로 다시 시도해 주세요."),
     EXTRACTION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "SCAN_004", "사진 분석을 사용할 수 없습니다. 잠시 후 다시 시도하거나 직접 입력해 주세요."),
     EXTRACTION_BUSY(HttpStatus.TOO_MANY_REQUESTS, "SCAN_005", "사진 분석 요청이 많습니다. 잠시 후 다시 시도해 주세요."),
