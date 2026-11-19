@@ -53,4 +53,26 @@ class DrugMasterRepositoryTest @Autowired constructor(
         assertEquals(listOf("D008"), thirdPage.content.map { it.drugCode })
         assertEquals(true, thirdPage.isLast)
     }
+
+    @Test
+    fun `이스케이프한 검색어는 와일드카드 문자를 그대로 검색한다`() {
+        drugMasterRepository.saveAllAndFlush(
+            listOf(
+                DrugMaster("P001", "테스트정5%", "N02BE01"),
+                DrugMaster("P002", "테스트정50mg", "N02BE01"),
+                DrugMaster("P003", "테스트_정", "N02BE01"),
+                DrugMaster("P004", "테스트A정", "N02BE01"),
+                DrugMaster("P005", "테스트!정", "N02BE01"),
+            ),
+        )
+
+        fun search(keyword: String) = drugMasterRepository.searchDistinctByDrugNameAndAtcCode(
+            keyword,
+            PageRequest.of(0, 20),
+        ).content.map { it.drugCode }
+
+        assertEquals(listOf("P001"), search("5!%"))
+        assertEquals(listOf("P003"), search("테스트!_정"))
+        assertEquals(listOf("P005"), search("테스트!!정"))
+    }
 }

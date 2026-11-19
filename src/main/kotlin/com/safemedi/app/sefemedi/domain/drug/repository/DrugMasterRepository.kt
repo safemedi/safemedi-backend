@@ -14,7 +14,7 @@ interface DrugMasterRepository : JpaRepository<DrugMaster, String> {
     @Query(
         """
         select d from DrugMaster d
-        where d.drugName like concat('%', :keyword, '%')
+        where d.drugName like concat('%', :keyword, '%') escape '!'
           and d.atcCode is not null
           and trim(d.atcCode) <> ''
           and (

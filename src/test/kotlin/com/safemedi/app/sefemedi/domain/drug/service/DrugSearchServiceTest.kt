@@ -84,6 +84,23 @@ class DrugSearchServiceTest {
     }
 
     @Test
+    fun `검색어의 LIKE 와일드카드를 이스케이프한다`() {
+        given(
+            drugMasterRepository.searchDistinctByDrugNameAndAtcCode(
+                keyword = "5!%!_!!",
+                pageable = PageRequest.of(0, 20),
+            )
+        ).willReturn(SliceImpl(emptyList(), PageRequest.of(0, 20), false))
+
+        drugSearchService.search("5%_!", 0, 20)
+
+        org.mockito.Mockito.verify(drugMasterRepository).searchDistinctByDrugNameAndAtcCode(
+            "5!%!_!!",
+            PageRequest.of(0, 20),
+        )
+    }
+
+    @Test
     fun `search coerces size when size exceeds max`() {
         given(
             drugMasterRepository.searchDistinctByDrugNameAndAtcCode(

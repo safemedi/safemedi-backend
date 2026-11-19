@@ -26,7 +26,7 @@ class DrugSearchService(
 
         val normalizedSize = size.coerceAtMost(MAX_SIZE)
         val drugs = drugMasterRepository.searchDistinctByDrugNameAndAtcCode(
-            keyword = keyword,
+            keyword = keyword.replace("!", "!!").replace("%", "!%").replace("_", "!_"),
             pageable = PageRequest.of(page, normalizedSize),
         )
 
