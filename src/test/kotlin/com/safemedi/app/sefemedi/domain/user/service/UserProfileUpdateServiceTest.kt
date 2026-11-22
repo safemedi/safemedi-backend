@@ -84,6 +84,7 @@ class UserProfileUpdateServiceTest {
             user = user,
             birthDate = LocalDate.of(1985, 3, 15),
             gender = Gender.FEMALE,
+            isPregnant = true,
             height = 180,
             weight = 75,
             bloodType = BloodType.A,
@@ -165,6 +166,7 @@ class UserProfileUpdateServiceTest {
             request = UserProfileUpdateRequest(
                 nickname = "홍길동01",
                 gender = " MALE ",
+                isPregnant = true,
                 bloodType = " O ",
                 rhType = " PLUS ",
                 diseaseCodes = listOf("j30", "I10", "J30"),
@@ -185,6 +187,8 @@ class UserProfileUpdateServiceTest {
 
         assertEquals("홍길동01", user.nickname)
         assertEquals(Gender.MALE, profile.gender)
+        assertEquals(false, profile.isPregnant)
+        assertEquals(false, response.isPregnant)
         assertEquals(BloodType.O, profile.bloodType)
         assertEquals(RhType.PLUS, profile.rhType)
         verify(userDiseaseMapRepository).deleteAllInBatch(listOf(removedDiseaseMap))

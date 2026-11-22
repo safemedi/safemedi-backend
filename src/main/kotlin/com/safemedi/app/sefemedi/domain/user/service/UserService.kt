@@ -74,6 +74,11 @@ class UserService(
             )
 
         request.gender?.let { profile.gender = parseEnum<Gender>(it) }
+        profile.isPregnant = if (profile.gender == Gender.FEMALE) {
+            request.isPregnant ?: profile.isPregnant
+        } else {
+            false
+        }
         request.bloodType?.let { profile.bloodType = parseEnum<BloodType>(it) }
         request.rhType?.let { profile.rhType = parseEnum<RhType>(it) }
 
@@ -133,6 +138,7 @@ class UserService(
             inviteCode = user.inviteCode,
             birthDate = profile?.birthDate?.toString(),
             gender = profile?.gender,
+            isPregnant = profile?.isPregnant ?: false,
             height = profile?.height,
             weight = profile?.weight,
             bloodType = profile?.bloodType,
@@ -391,6 +397,7 @@ class UserService(
 
         profile.birthDate = parseBirthDate(request.birthDate)
         profile.gender = parseEnum<Gender>(request.gender)
+        profile.isPregnant = profile.gender == Gender.FEMALE && request.isPregnant
         profile.height = request.height
         profile.weight = request.weight
         profile.bloodType = request.bloodType?.let { parseEnum<BloodType>(it) }

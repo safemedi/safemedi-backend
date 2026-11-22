@@ -3,6 +3,7 @@ package com.safemedi.app.sefemedi.domain.user.dto
 data class UserProfileUpdateRequest(
     val nickname: String? = null,
     val gender: String? = null,
+    val isPregnant: Boolean? = null,
     val bloodType: String? = null,
     val rhType: String? = null,
     val diseaseCodes: List<String>? = null,
