@@ -3,7 +3,9 @@ package com.safemedi.app.sefemedi.domain.family.service
 import com.safemedi.app.sefemedi.domain.family.entity.Family
 import com.safemedi.app.sefemedi.domain.family.repository.FamilyRepository
 import com.safemedi.app.sefemedi.domain.user.entity.User
+import com.safemedi.app.sefemedi.domain.user.entity.UserHealthProfile
 import com.safemedi.app.sefemedi.domain.user.repository.UserRepository
+import com.safemedi.app.sefemedi.domain.user.repository.UserHealthProfileRepository
 import com.safemedi.app.sefemedi.global.error.BusinessException
 import com.safemedi.app.sefemedi.global.error.ErrorCode
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -13,12 +15,14 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.BDDMockito.given
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 
 class FamilyListQueryServiceTest {
 
     private lateinit var userRepository: UserRepository
     private lateinit var familyRepository: FamilyRepository
+    private lateinit var userHealthProfileRepository: UserHealthProfileRepository
     private lateinit var service: FamilyListQueryService
 
     private val currentUser = User(id = 1L, nickname = "홍길동", socialId = "kakao-123")
@@ -27,7 +31,10 @@ class FamilyListQueryServiceTest {
     fun setUp() {
         userRepository = mock(UserRepository::class.java)
         familyRepository = mock(FamilyRepository::class.java)
-        service = FamilyListQueryService(userRepository, familyRepository)
+        userHealthProfileRepository = mock(UserHealthProfileRepository::class.java)
+        service = FamilyListQueryService(userRepository, familyRepository, userHealthProfileRepository)
+        given(userHealthProfileRepository.findAllById(org.mockito.ArgumentMatchers.anyIterable<Long>()))
+            .willReturn(emptyList())
 
         given(userRepository.findBySocialId("kakao-123")).willReturn(currentUser)
     }
@@ -67,6 +74,40 @@ class FamilyListQueryServiceTest {
         assertNull(response.families.single().familyId)
         assertEquals("홍길동", response.families.single().name)
         assertEquals("본인", response.families.single().relation)
+    }
+
+    @Test
+    fun `가족 목록에 저장된 임신 여부를 반환한다`() {
+        val mother = User(id = 2L, nickname = "김영희", socialId = "kakao-456")
+        given(familyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(
+            listOf(family(id = 12L, connectedUser = mother, relation = "어머니"))
+        )
+        given(familyRepository.findUserIdsSharingInfoWith(listOf(2L), 1L)).willReturn(listOf(2L))
+        given(userHealthProfileRepository.findAllById(listOf(2L, 1L))).willReturn(
+            listOf(UserHealthProfile(userId = 2L, user = mother, isPregnant = true))
+        )
+
+        val response = service.getFamilies("kakao-123")
+
+        assertEquals(false, response.families[0].isPregnant)
+        assertEquals(true, response.families[1].isPregnant)
+    }
+
+    @Test
+    fun `상대 가족이 정보 공유를 허용하지 않으면 임신 여부를 노출하지 않는다`() {
+        val mother = User(id = 2L, nickname = "김영희", socialId = "kakao-456")
+        given(familyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(
+            listOf(family(id = 12L, connectedUser = mother, relation = "어머니"))
+        )
+        given(userHealthProfileRepository.findAllById(listOf(1L))).willReturn(
+            listOf(UserHealthProfile(userId = 1L, user = currentUser, isPregnant = true))
+        )
+
+        val response = service.getFamilies("kakao-123")
+
+        assertEquals(true, response.families[0].isPregnant)
+        assertEquals(false, response.families[1].isPregnant)
+        verify(userHealthProfileRepository).findAllById(listOf(1L))
     }
 
     @Test
