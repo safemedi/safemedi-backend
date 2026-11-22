@@ -4,6 +4,7 @@ import com.safemedi.app.sefemedi.domain.family.dto.FamilyListItemResponse
 import com.safemedi.app.sefemedi.domain.family.dto.FamilyListResponse
 import com.safemedi.app.sefemedi.domain.family.repository.FamilyRepository
 import com.safemedi.app.sefemedi.domain.user.repository.UserRepository
+import com.safemedi.app.sefemedi.domain.user.repository.UserHealthProfileRepository
 import com.safemedi.app.sefemedi.global.error.BusinessException
 import com.safemedi.app.sefemedi.global.error.ErrorCode
 import org.springframework.stereotype.Service
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional
 class FamilyListQueryService(
     private val userRepository: UserRepository,
     private val familyRepository: FamilyRepository,
+    private val userHealthProfileRepository: UserHealthProfileRepository,
 ) {
 
     @Transactional(readOnly = true)
@@ -22,24 +24,30 @@ class FamilyListQueryService(
         val currentUserId = currentUser.id
             ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR)
         val connectedFamilies = familyRepository.findAllByUser_IdOrderByCreatedAtAsc(currentUserId)
+        val pregnancyByUserId = userHealthProfileRepository.findAllById(
+            (connectedFamilies.mapNotNull { it.connectedUser.id } + currentUserId).distinct()
+        ).associate { it.userId to it.isPregnant }
+        val familyItems = connectedFamilies
             .map { family ->
                 FamilyListItemResponse(
                     familyId = family.id
                         ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR),
                     name = family.connectedUser.nickname,
                     relation = family.relation,
+                    isPregnant = pregnancyByUserId[family.connectedUser.id] ?: false,
                 )
             }
 
-        val families = buildList(connectedFamilies.size + 1) {
+        val families = buildList(familyItems.size + 1) {
             add(
                 FamilyListItemResponse(
                     familyId = null,
                     name = currentUser.nickname,
                     relation = SELF_RELATION,
+                    isPregnant = pregnancyByUserId[currentUserId] ?: false,
                 )
             )
-            addAll(connectedFamilies)
+            addAll(familyItems)
         }
 
         return FamilyListResponse(families = families)
