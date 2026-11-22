@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.BDDMockito.given
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 
 class FamilyListQueryServiceTest {
@@ -81,6 +82,7 @@ class FamilyListQueryServiceTest {
         given(familyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(
             listOf(family(id = 12L, connectedUser = mother, relation = "어머니"))
         )
+        given(familyRepository.findUserIdsSharingInfoWith(listOf(2L), 1L)).willReturn(listOf(2L))
         given(userHealthProfileRepository.findAllById(listOf(2L, 1L))).willReturn(
             listOf(UserHealthProfile(userId = 2L, user = mother, isPregnant = true))
         )
@@ -89,6 +91,23 @@ class FamilyListQueryServiceTest {
 
         assertEquals(false, response.families[0].isPregnant)
         assertEquals(true, response.families[1].isPregnant)
+    }
+
+    @Test
+    fun `상대 가족이 정보 공유를 허용하지 않으면 임신 여부를 노출하지 않는다`() {
+        val mother = User(id = 2L, nickname = "김영희", socialId = "kakao-456")
+        given(familyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(
+            listOf(family(id = 12L, connectedUser = mother, relation = "어머니"))
+        )
+        given(userHealthProfileRepository.findAllById(listOf(1L))).willReturn(
+            listOf(UserHealthProfile(userId = 1L, user = currentUser, isPregnant = true))
+        )
+
+        val response = service.getFamilies("kakao-123")
+
+        assertEquals(true, response.families[0].isPregnant)
+        assertEquals(false, response.families[1].isPregnant)
+        verify(userHealthProfileRepository).findAllById(listOf(1L))
     }
 
     @Test

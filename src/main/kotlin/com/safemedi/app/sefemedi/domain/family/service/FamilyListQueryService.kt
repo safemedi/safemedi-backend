@@ -24,8 +24,14 @@ class FamilyListQueryService(
         val currentUserId = currentUser.id
             ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR)
         val connectedFamilies = familyRepository.findAllByUser_IdOrderByCreatedAtAsc(currentUserId)
+        val connectedUserIds = connectedFamilies.mapNotNull { it.connectedUser.id }.distinct()
+        val sharingUserIds = if (connectedUserIds.isEmpty()) {
+            emptySet()
+        } else {
+            familyRepository.findUserIdsSharingInfoWith(connectedUserIds, currentUserId).toSet()
+        }
         val pregnancyByUserId = userHealthProfileRepository.findAllById(
-            (connectedFamilies.mapNotNull { it.connectedUser.id } + currentUserId).distinct()
+            sharingUserIds.toList() + currentUserId
         ).associate { it.userId to it.isPregnant }
         val familyItems = connectedFamilies
             .map { family ->
@@ -34,7 +40,11 @@ class FamilyListQueryService(
                         ?: throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR),
                     name = family.connectedUser.nickname,
                     relation = family.relation,
-                    isPregnant = pregnancyByUserId[family.connectedUser.id] ?: false,
+                    isPregnant = if (family.connectedUser.id in sharingUserIds) {
+                        pregnancyByUserId[family.connectedUser.id] ?: false
+                    } else {
+                        false
+                    },
                 )
             }
 

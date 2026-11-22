@@ -52,4 +52,25 @@ class FamilySharingRepositoryTest @Autowired constructor(
             familyRepository.findByUser_IdAndConnectedUser_Id(requireNotNull(target.id), requireNotNull(requester.id)),
         )
     }
+
+    @Test
+    fun `목록 조회에서는 상대 가족이 요청자에게 공유를 허용한 경우만 반환한다`() {
+        val requester = userRepository.save(User(socialId = "list-requester"))
+        val sharing = userRepository.save(User(socialId = "list-sharing"))
+        val private = userRepository.save(User(socialId = "list-private"))
+        val requesterId = requireNotNull(requester.id)
+        val sharingId = requireNotNull(sharing.id)
+        val privateId = requireNotNull(private.id)
+        familyRepository.saveAllAndFlush(
+            listOf(
+                Family(user = sharing, connectedUser = requester, relation = "가족", isAllowMyInfo = true),
+                Family(user = private, connectedUser = requester, relation = "가족", isAllowMyInfo = false),
+            ),
+        )
+
+        assertEquals(
+            listOf(sharingId),
+            familyRepository.findUserIdsSharingInfoWith(listOf(sharingId, privateId), requesterId),
+        )
+    }
 }
