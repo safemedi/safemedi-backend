@@ -3,6 +3,7 @@ package com.safemedi.app.sefemedi.domain.medication.service
 import com.safemedi.app.sefemedi.domain.drug.entity.DrugIngredientMap
 import com.safemedi.app.sefemedi.domain.drug.entity.DrugMaster
 import com.safemedi.app.sefemedi.domain.drug.entity.DurInteraction
+import com.safemedi.app.sefemedi.domain.drug.entity.DurPregnancy
 import com.safemedi.app.sefemedi.domain.drug.entity.IngredientMaster
 import com.safemedi.app.sefemedi.domain.drug.repository.DrugIngredientMapRepository
 import com.safemedi.app.sefemedi.domain.drug.repository.DrugMasterRepository
@@ -23,6 +24,7 @@ import com.safemedi.app.sefemedi.domain.notification.service.NotificationCreateS
 import com.safemedi.app.sefemedi.domain.user.entity.AllergyType
 import com.safemedi.app.sefemedi.domain.user.entity.User
 import com.safemedi.app.sefemedi.domain.user.entity.UserAllergy
+import com.safemedi.app.sefemedi.domain.user.entity.UserHealthProfile
 import com.safemedi.app.sefemedi.domain.user.repository.UserAllergyRepository
 import com.safemedi.app.sefemedi.domain.user.repository.UserHealthProfileRepository
 import com.safemedi.app.sefemedi.domain.user.repository.UserRepository
@@ -190,6 +192,57 @@ class PrescriptionAnalyzeServiceTest {
         assertEquals("약물 위험 경고", command.title)
         assertEquals("Tylenol 500mg, Amlodipine 5mg 약물에 위험 경고가 있어요", command.content)
         assertEquals("DRUG_RISK_WARNING:ANALYZE:1:D001,D002", command.deduplicationKey)
+    }
+
+    @Test
+    fun `임신 중이면 임부 금기 약물에 위험 경고를 반환한다`() {
+        val drug = DrugMaster(drugCode = "D001", drugName = "금기 약물", atcCode = "A01AA01")
+        val drugNames = listOf("금기 약물")
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(userHealthProfileRepository.findById(1L)).willReturn(
+            Optional.of(UserHealthProfile(userId = 1L, user = user, isPregnant = true))
+        )
+        given(drugMasterRepository.findAllById(listOf("D001"))).willReturn(listOf(drug))
+        given(drugIngredientMapRepository.findAllByDrugCodes(listOf("D001"))).willReturn(emptyList())
+        given(durPregnancyRepository.findByDrugNameIn(drugNames)).willReturn(
+            listOf(
+                DurPregnancy(
+                    drugName = "금기 약물",
+                    grade = 1,
+                    noticeNumber = "DUR-001",
+                    noticeDate = LocalDate.of(2026, 1, 1),
+                    warningMessage = "임부 금기",
+                )
+            )
+        )
+
+        val response = service.analyze(
+            socialId = "kakao-123",
+            request = PrescriptionAnalyzeRequest(listOf(MedicationAnalyzeRequest("D001"))),
+        )
+
+        assertEquals(MedicationSafetyStatus.DANGER, response.analyzedMedications.single().status)
+        assertTrue(response.analyzedMedications.single().warnings.any { it.type == MedicationWarningType.DUR_PREGNANCY })
+    }
+
+    @Test
+    fun `임신 중이 아니면 임부 금기 경고를 반환하지 않는다`() {
+        val drug = DrugMaster(drugCode = "D001", drugName = "금기 약물", atcCode = "A01AA01")
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(userHealthProfileRepository.findById(1L)).willReturn(
+            Optional.of(UserHealthProfile(userId = 1L, user = user, isPregnant = false))
+        )
+        given(drugMasterRepository.findAllById(listOf("D001"))).willReturn(listOf(drug))
+        given(drugIngredientMapRepository.findAllByDrugCodes(listOf("D001"))).willReturn(emptyList())
+
+        val response = service.analyze(
+            socialId = "kakao-123",
+            request = PrescriptionAnalyzeRequest(listOf(MedicationAnalyzeRequest("D001"))),
+        )
+
+        assertEquals(MedicationSafetyStatus.SAFE, response.analyzedMedications.single().status)
+        assertTrue(response.analyzedMedications.single().warnings.none { it.type == MedicationWarningType.DUR_PREGNANCY })
+        verifyNoInteractions(durPregnancyRepository)
     }
 
     @Test
