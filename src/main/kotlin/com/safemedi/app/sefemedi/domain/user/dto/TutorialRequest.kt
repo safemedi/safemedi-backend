@@ -3,6 +3,7 @@ package com.safemedi.app.sefemedi.domain.user.dto
 data class TutorialRequest(
     val birthDate: String,
     val gender: String,
+    val isPregnant: Boolean = false,
     val height: Int? = null,
     val weight: Int? = null,
     val bloodType: String? = null,

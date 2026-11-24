@@ -24,6 +24,9 @@ class UserHealthProfile(
     @Enumerated(EnumType.STRING)
     var gender: Gender? = null,
 
+    @Column(name = "is_pregnant", nullable = false)
+    var isPregnant: Boolean = false,
+
     var height: Int? = null,
     var weight: Int? = null,
 

@@ -8,4 +8,5 @@ data class FamilyListItemResponse(
     val familyId: Long?,
     val name: String?,
     val relation: String,
+    val isPregnant: Boolean = false,
 )

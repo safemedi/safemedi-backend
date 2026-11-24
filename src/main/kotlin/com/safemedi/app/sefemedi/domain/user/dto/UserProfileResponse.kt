@@ -9,6 +9,7 @@ data class UserProfileResponse(
     val inviteCode: String?,
     val birthDate: String?,
     val gender: Gender?,
+    val isPregnant: Boolean = false,
     val height: Int?,
     val weight: Int?,
     val bloodType: BloodType?,

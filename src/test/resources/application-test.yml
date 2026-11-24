@@ -14,6 +14,9 @@ jwt:
   secret: abcdefghijklmnopqrstuvwxyz123456
 
 app:
+  prescription-extraction:
+    api-key: ""
+    model: ""
   family-invitation:
     base-url: https://test.example.com/invite
     token-encryption-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

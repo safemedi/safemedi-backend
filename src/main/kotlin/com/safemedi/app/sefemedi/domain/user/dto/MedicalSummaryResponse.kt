@@ -9,6 +9,7 @@ data class MedicalSummaryResponse(
     val name: String?,
     val birthDate: LocalDate?,
     val gender: Gender?,
+    val isPregnant: Boolean = false,
     val height: Int?,
     val weight: Int?,
     val bloodType: BloodType?,

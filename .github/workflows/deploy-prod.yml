@@ -16,6 +16,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 20
 
     env:
@@ -45,6 +46,8 @@ jobs:
           FAMILY_INVITATION_BASE_URL: ${{ secrets.PROD_FAMILY_INVITATION_BASE_URL }}
           FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY: ${{ secrets.PROD_FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY }}
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+          AI_MODEL: ${{ vars.AI_MODEL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           set -euo pipefail
@@ -62,7 +65,9 @@ jobs:
             JWT_SECRET \
             FAMILY_INVITATION_BASE_URL \
             FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY \
-            KAKAO_REST_API_KEY
+            KAKAO_REST_API_KEY \
+            API_KEY \
+            AI_MODEL
           do
             if [ -z "${!NAME}" ]; then
               echo "::error::Required Actions variable or secret is not configured: $NAME"
@@ -198,6 +203,8 @@ jobs:
           FAMILY_INVITATION_BASE_URL: ${{ secrets.PROD_FAMILY_INVITATION_BASE_URL }}
           FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY: ${{ secrets.PROD_FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY }}
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+          AI_MODEL: ${{ vars.AI_MODEL }}
           FIREBASE_ENABLED: ${{ secrets.FIREBASE_ENABLED }}
           FCM_OUTBOX_BATCH_SIZE: ${{ secrets.FCM_OUTBOX_BATCH_SIZE }}
           FCM_OUTBOX_FIXED_DELAY_MS: ${{ secrets.FCM_OUTBOX_FIXED_DELAY_MS }}
@@ -210,7 +217,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.AWS_EC2_SSH_KEY }}
           fingerprint: ${{ env.AWS_EC2_HOST_FINGERPRINT }}
-          envs: DB_URL,DB_USERNAME,DB_PASSWORD,JWT_SECRET,FAMILY_INVITATION_BASE_URL,FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY,KAKAO_REST_API_KEY,FIREBASE_ENABLED,FCM_OUTBOX_BATCH_SIZE,FCM_OUTBOX_FIXED_DELAY_MS,IMAGE_TAG,CONTAINER_NAME,DOCKER_NETWORK,DEPLOY_DIR
+          envs: DB_URL,DB_USERNAME,DB_PASSWORD,JWT_SECRET,FAMILY_INVITATION_BASE_URL,FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY,KAKAO_REST_API_KEY,API_KEY,AI_MODEL,FIREBASE_ENABLED,FCM_OUTBOX_BATCH_SIZE,FCM_OUTBOX_FIXED_DELAY_MS,IMAGE_TAG,CONTAINER_NAME,DOCKER_NETWORK,DEPLOY_DIR
           command_timeout: 10m
           script: |
             set -eu
@@ -224,6 +231,8 @@ jobs:
             test -n "$FAMILY_INVITATION_BASE_URL"
             test -n "$FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY"
             test -n "$KAKAO_REST_API_KEY"
+            test -n "$API_KEY"
+            test -n "$AI_MODEL"
             test -r "$DEPLOY_DIR/secrets/firebase-adminsdk.json"
             sudo chown ubuntu:10001 "$DEPLOY_DIR/secrets/firebase-adminsdk.json"
             chmod 640 "$DEPLOY_DIR/secrets/firebase-adminsdk.json"
@@ -252,6 +261,8 @@ jobs:
                 -e FAMILY_INVITATION_BASE_URL="$FAMILY_INVITATION_BASE_URL" \
                 -e FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY="$FAMILY_INVITATION_TOKEN_ENCRYPTION_KEY" \
                 -e KAKAO_REST_API_KEY="$KAKAO_REST_API_KEY" \
+                -e API_KEY \
+                -e AI_MODEL \
                 -e FIREBASE_ENABLED="$FIREBASE_ENABLED" \
                 -e FIREBASE_CREDENTIALS_PATH="/run/secrets/firebase-adminsdk.json" \
                 -e FCM_OUTBOX_BATCH_SIZE="${FCM_OUTBOX_BATCH_SIZE:-50}" \

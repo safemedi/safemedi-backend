@@ -49,6 +49,20 @@ interface FamilyRepository : JpaRepository<Family, Long> {
         userId: Long,
     ): List<Family>
 
+    @Query(
+        """
+        select f.user.id
+        from Family f
+        where f.user.id in :userIds
+          and f.connectedUser.id = :connectedUserId
+          and f.isAllowMyInfo = true
+        """
+    )
+    fun findUserIdsSharingInfoWith(
+        @Param("userIds") userIds: Collection<Long>,
+        @Param("connectedUserId") connectedUserId: Long,
+    ): List<Long>
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
         """

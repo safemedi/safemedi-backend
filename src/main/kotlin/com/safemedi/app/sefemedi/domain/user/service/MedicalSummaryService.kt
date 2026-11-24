@@ -89,6 +89,7 @@ class MedicalSummaryService(
             name = user.nickname,
             birthDate = profile?.birthDate,
             gender = profile?.gender,
+            isPregnant = profile?.isPregnant ?: false,
             height = profile?.height,
             weight = profile?.weight,
             bloodType = profile?.bloodType,

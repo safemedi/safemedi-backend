@@ -32,7 +32,7 @@ class DrugSearchServiceTest {
         )
 
         given(
-            drugMasterRepository.findByDrugNameContainingAndAtcCodeIsNotNullOrderByDrugNameAsc(
+            drugMasterRepository.searchDistinctByDrugNameAndAtcCode(
                 keyword = "tylenol",
                 pageable = PageRequest.of(0, 20),
             )
@@ -69,9 +69,41 @@ class DrugSearchServiceTest {
     }
 
     @Test
+    fun `수출용 약품은 수출명을 제거하여 반환한다`() {
+        val drug = DrugMaster("D008", "테스트정600mg(수출용)Export name", "N02BE01")
+        given(
+            drugMasterRepository.searchDistinctByDrugNameAndAtcCode(
+                keyword = "테스트정",
+                pageable = PageRequest.of(0, 20),
+            )
+        ).willReturn(SliceImpl(listOf(drug), PageRequest.of(0, 20), false))
+
+        val response = drugSearchService.search("테스트정", 0, 20)
+
+        assertEquals("테스트정600mg(수출용)", response.content.single().drugName)
+    }
+
+    @Test
+    fun `검색어의 LIKE 와일드카드를 이스케이프한다`() {
+        given(
+            drugMasterRepository.searchDistinctByDrugNameAndAtcCode(
+                keyword = "5!%!_!!",
+                pageable = PageRequest.of(0, 20),
+            )
+        ).willReturn(SliceImpl(emptyList(), PageRequest.of(0, 20), false))
+
+        drugSearchService.search("5%_!", 0, 20)
+
+        org.mockito.Mockito.verify(drugMasterRepository).searchDistinctByDrugNameAndAtcCode(
+            "5!%!_!!",
+            PageRequest.of(0, 20),
+        )
+    }
+
+    @Test
     fun `search coerces size when size exceeds max`() {
         given(
-            drugMasterRepository.findByDrugNameContainingAndAtcCodeIsNotNullOrderByDrugNameAsc(
+            drugMasterRepository.searchDistinctByDrugNameAndAtcCode(
                 keyword = "tylenol",
                 pageable = PageRequest.of(0, 50),
             )

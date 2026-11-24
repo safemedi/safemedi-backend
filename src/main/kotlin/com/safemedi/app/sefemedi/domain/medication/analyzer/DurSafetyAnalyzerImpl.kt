@@ -7,7 +7,6 @@ import com.safemedi.app.sefemedi.domain.drug.repository.DurInteractionRepository
 import com.safemedi.app.sefemedi.domain.drug.repository.DurPregnancyRepository
 import com.safemedi.app.sefemedi.domain.medication.dto.MedicationSafetyStatus
 import com.safemedi.app.sefemedi.domain.medication.dto.MedicationWarningType
-import com.safemedi.app.sefemedi.domain.user.entity.Gender
 import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import java.time.LocalDate
@@ -79,7 +78,7 @@ class DurSafetyAnalyzerImpl(
         context: PrescriptionContext,
         drugNames: List<String>,
     ) {
-        if (context.healthProfile?.gender != Gender.FEMALE) {
+        if (context.healthProfile?.isPregnant != true) {
             return
         }
 

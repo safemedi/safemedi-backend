@@ -25,17 +25,22 @@ class DrugSearchService(
         )
 
         val normalizedSize = size.coerceAtMost(MAX_SIZE)
-        val drugs = drugMasterRepository.findByDrugNameContainingAndAtcCodeIsNotNullOrderByDrugNameAsc(
-            keyword = keyword,
+        val drugs = drugMasterRepository.searchDistinctByDrugNameAndAtcCode(
+            keyword = keyword.replace("!", "!!").replace("%", "!%").replace("_", "!_"),
             pageable = PageRequest.of(page, normalizedSize),
         )
 
         return DrugSearchPageResponse(
             content = drugs.content.mapNotNull {
+                val drugName = it.drugName ?: return@mapNotNull null
                 DrugSearchResponse(
                     drugCode = it.drugCode,
                     atcCode = it.atcCode ?: return@mapNotNull null,
-                    drugName = it.drugName ?: return@mapNotNull null,
+                    drugName = if ("(수출용)" in drugName) {
+                        "${drugName.substringBefore("(수출용)").trimEnd()}(수출용)"
+                    } else {
+                        drugName
+                    },
                 )
             },
             page = page,
