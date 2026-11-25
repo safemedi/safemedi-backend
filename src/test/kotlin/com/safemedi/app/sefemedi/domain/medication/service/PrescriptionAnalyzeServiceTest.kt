@@ -2,6 +2,8 @@ package com.safemedi.app.sefemedi.domain.medication.service
 
 import com.safemedi.app.sefemedi.domain.drug.entity.DrugIngredientMap
 import com.safemedi.app.sefemedi.domain.drug.entity.DrugMaster
+import com.safemedi.app.sefemedi.domain.drug.entity.DurElderly
+import com.safemedi.app.sefemedi.domain.drug.entity.DurElderlyCategory
 import com.safemedi.app.sefemedi.domain.drug.entity.DurInteraction
 import com.safemedi.app.sefemedi.domain.drug.entity.DurPregnancy
 import com.safemedi.app.sefemedi.domain.drug.entity.IngredientMaster
@@ -36,6 +38,11 @@ import org.mockito.BDDMockito.given
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.mockingDetails
 import org.mockito.Mockito.verifyNoInteractions
+import java.time.Clock
+import com.safemedi.app.sefemedi.domain.drug.entity.DurCoverage
+import com.safemedi.app.sefemedi.domain.drug.entity.DurType
+import com.safemedi.app.sefemedi.domain.drug.repository.DurCoverageRepository
+import org.mockito.Mockito.RETURNS_DEFAULTS
 import java.time.LocalDate
 import java.util.Optional
 import kotlin.test.assertEquals
@@ -52,6 +59,7 @@ class PrescriptionAnalyzeServiceTest {
     private lateinit var durAgeRepository: DurAgeRepository
     private lateinit var durPregnancyRepository: DurPregnancyRepository
     private lateinit var durInteractionRepository: DurInteractionRepository
+    private lateinit var durCoverageRepository: DurCoverageRepository
     private lateinit var notificationCreateService: NotificationCreateService
     private lateinit var service: PrescriptionAnalyzeService
 
@@ -73,6 +81,15 @@ class PrescriptionAnalyzeServiceTest {
         durInteractionRepository = mock(DurInteractionRepository::class.java)
         notificationCreateService = mock(NotificationCreateService::class.java)
 
+        durCoverageRepository = mock(DurCoverageRepository::class.java) { invocation ->
+            if (invocation.method.name == "findByDrugCodeInAndVerifiedTrue") {
+                val codes = invocation.arguments[0] as Collection<*>
+                codes.flatMap { code ->
+                    DurType.entries.map { type -> DurCoverage("$code:$type", code.toString(), type, "test", true) }
+                }
+            } else RETURNS_DEFAULTS.answer(invocation)
+        }
+
         service = PrescriptionAnalyzeService(
             userRepository = userRepository,
             userAllergyRepository = userAllergyRepository,
@@ -86,6 +103,8 @@ class PrescriptionAnalyzeServiceTest {
                     durAgeRepository = durAgeRepository,
                     durPregnancyRepository = durPregnancyRepository,
                     durInteractionRepository = durInteractionRepository,
+                    durCoverageRepository = durCoverageRepository,
+                    clock = Clock.systemUTC(),
                 ),
                 AtcCodeAllergyAnalyzerImpl(),
                 IngredientAllergyAnalyzerImpl(),
@@ -143,8 +162,10 @@ class PrescriptionAnalyzeServiceTest {
                 allergyName = "Calcium channel blocker",
             ),
         )
+        val drugCodes = listOf("D001", "D002")
         val drugNames = listOf("Tylenol 500mg", "Amlodipine 5mg")
         val interaction = DurInteraction(
+            drugCodeA = "D001", drugCodeB = "D002", runtimeVerified = true,
             drugNameA = "Tylenol 500mg",
             drugNameB = "Amlodipine 5mg",
             noticeNumber = "DUR-001",
@@ -154,12 +175,12 @@ class PrescriptionAnalyzeServiceTest {
 
         given(userRepository.findBySocialId("kakao-123")).willReturn(user)
         given(userAllergyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(allergies)
-        given(userHealthProfileRepository.findById(1L)).willReturn(Optional.empty())
+        given(userHealthProfileRepository.findById(1L)).willReturn(Optional.of(UserHealthProfile(userId = 1L, user = user, birthDate = LocalDate.of(1990, 1, 1))))
         given(drugMasterRepository.findAllById(listOf("D001", "D002"))).willReturn(listOf(tylenolDrug, amlodipineDrug))
         given(drugIngredientMapRepository.findAllByDrugCodes(listOf("D001", "D002"))).willReturn(listOf(ingredientMap))
-        given(durAgeRepository.findByDrugNameIn(drugNames)).willReturn(emptyList())
-        given(durPregnancyRepository.findByDrugNameIn(drugNames)).willReturn(emptyList())
-        given(durInteractionRepository.findInteractions(drugNames)).willReturn(listOf(interaction))
+        given(durAgeRepository.findByDrugCodeInAndRuntimeVerifiedTrue(drugCodes)).willReturn(emptyList())
+        given(durPregnancyRepository.findByDrugCodeInAndRuntimeVerifiedTrue(drugCodes)).willReturn(emptyList())
+        given(durInteractionRepository.findInteractions(drugCodes)).willReturn(listOf(interaction))
 
         val response = service.analyze(
             socialId = "kakao-123",
@@ -195,23 +216,26 @@ class PrescriptionAnalyzeServiceTest {
     }
 
     @Test
-    fun `임신 중이면 임부 금기 약물에 위험 경고를 반환한다`() {
+    fun `임신 중이면 약품 코드로 M등급 임부 금기 경고를 반환한다`() {
         val drug = DrugMaster(drugCode = "D001", drugName = "금기 약물", atcCode = "A01AA01")
-        val drugNames = listOf("금기 약물")
         given(userRepository.findBySocialId("kakao-123")).willReturn(user)
         given(userHealthProfileRepository.findById(1L)).willReturn(
             Optional.of(UserHealthProfile(userId = 1L, user = user, isPregnant = true))
         )
         given(drugMasterRepository.findAllById(listOf("D001"))).willReturn(listOf(drug))
         given(drugIngredientMapRepository.findAllByDrugCodes(listOf("D001"))).willReturn(emptyList())
-        given(durPregnancyRepository.findByDrugNameIn(drugNames)).willReturn(
+        given(durPregnancyRepository.findByDrugCodeInAndRuntimeVerifiedTrue(listOf("D001"))).willReturn(
             listOf(
                 DurPregnancy(
-                    drugName = "금기 약물",
-                    grade = 1,
+                    drugCode = "D001",
+                    durProductCode = "645000001",
+                    runtimeVerified = true,
+                    drugName = "이름이 다른 DUR 원본 약물",
+                    ingredientCode = "100001ABC",
+                    grade = "M",
                     noticeNumber = "DUR-001",
                     noticeDate = LocalDate.of(2026, 1, 1),
-                    warningMessage = "임부 금기",
+                    warningMessage = null,
                 )
             )
         )
@@ -222,7 +246,49 @@ class PrescriptionAnalyzeServiceTest {
         )
 
         assertEquals(MedicationSafetyStatus.DANGER, response.analyzedMedications.single().status)
-        assertTrue(response.analyzedMedications.single().warnings.any { it.type == MedicationWarningType.DUR_PREGNANCY })
+        assertTrue(
+            response.analyzedMedications.single().warnings.any {
+                it.type == MedicationWarningType.DUR_PREGNANCY &&
+                    it.message == "임부금기 조건부 대상 의약품입니다. 치료 목적에 따라 금기 등급이 달라질 수 있습니다."
+            }
+        )
+    }
+
+    @Test
+    fun `65세 이상이면 약품 코드로 노인주의 경고를 반환한다`() {
+        val drug = DrugMaster(drugCode = "D001", drugName = "노인주의 약물", atcCode = "A01AA01")
+        given(userRepository.findBySocialId("kakao-123")).willReturn(user)
+        given(userHealthProfileRepository.findById(1L)).willReturn(
+            Optional.of(UserHealthProfile(userId = 1L, user = user, birthDate = LocalDate.of(1950, 1, 1)))
+        )
+        given(drugMasterRepository.findAllById(listOf("D001"))).willReturn(listOf(drug))
+        given(drugIngredientMapRepository.findAllByDrugCodes(listOf("D001"))).willReturn(emptyList())
+        given(durElderlyRepository.findByDrugCodeInAndRuntimeVerifiedTrue(listOf("D001"))).willReturn(
+            listOf(
+                DurElderly(
+                    drugCode = "D001",
+                    durProductCode = "645000002",
+                    runtimeVerified = true,
+                    drugName = "이름이 다른 DUR 원본 약물",
+                    ingredientCode = "100002ABC",
+                    category = DurElderlyCategory.NSAID,
+                    warningMessage = null,
+                )
+            )
+        )
+
+        val response = service.analyze(
+            socialId = "kakao-123",
+            request = PrescriptionAnalyzeRequest(listOf(MedicationAnalyzeRequest("D001"))),
+        )
+
+        assertEquals(MedicationSafetyStatus.WARNING, response.analyzedMedications.single().status)
+        assertTrue(
+            response.analyzedMedications.single().warnings.any {
+                it.type == MedicationWarningType.DUR_ELDERLY &&
+                    it.message == "노인주의 대상 의약품입니다."
+            }
+        )
     }
 
     @Test
@@ -230,7 +296,7 @@ class PrescriptionAnalyzeServiceTest {
         val drug = DrugMaster(drugCode = "D001", drugName = "금기 약물", atcCode = "A01AA01")
         given(userRepository.findBySocialId("kakao-123")).willReturn(user)
         given(userHealthProfileRepository.findById(1L)).willReturn(
-            Optional.of(UserHealthProfile(userId = 1L, user = user, isPregnant = false))
+            Optional.of(UserHealthProfile(userId = 1L, user = user, isPregnant = false, birthDate = LocalDate.of(1990, 1, 1)))
         )
         given(drugMasterRepository.findAllById(listOf("D001"))).willReturn(listOf(drug))
         given(drugIngredientMapRepository.findAllByDrugCodes(listOf("D001"))).willReturn(emptyList())
@@ -246,7 +312,7 @@ class PrescriptionAnalyzeServiceTest {
     }
 
     @Test
-    fun `중복약물 경고`() {
+    fun `이름이 같아도 다른 코드의 약에는 병용금기를 전파하지 않는다`() {
         val medications = listOf(
             MedicationAnalyzeRequest(drugCode = "D001"),
             MedicationAnalyzeRequest(drugCode = "D002"),
@@ -267,8 +333,9 @@ class PrescriptionAnalyzeServiceTest {
             drugName = "Same Drug",
             atcCode = "A01AA02",
         )
-        val drugNames = listOf("Same Drug", "Other Drug", "Same Drug")
+        val drugCodes = listOf("D001", "D002", "D003")
         val interaction = DurInteraction(
+            drugCodeA = "D001", drugCodeB = "D002", runtimeVerified = true,
             drugNameA = "Same Drug",
             drugNameB = "Other Drug",
             noticeNumber = "DUR-002",
@@ -278,22 +345,22 @@ class PrescriptionAnalyzeServiceTest {
 
         given(userRepository.findBySocialId("kakao-123")).willReturn(user)
         given(userAllergyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(emptyList())
-        given(userHealthProfileRepository.findById(1L)).willReturn(Optional.empty())
+        given(userHealthProfileRepository.findById(1L)).willReturn(Optional.of(UserHealthProfile(userId = 1L, user = user, birthDate = LocalDate.of(1990, 1, 1))))
         given(drugMasterRepository.findAllById(listOf("D001", "D002", "D003")))
             .willReturn(listOf(firstSameNameDrug, otherDrug, secondSameNameDrug))
         given(drugIngredientMapRepository.findAllByDrugCodes(listOf("D001", "D002", "D003"))).willReturn(emptyList())
-        given(durInteractionRepository.findInteractions(drugNames)).willReturn(listOf(interaction))
+        given(durInteractionRepository.findInteractions(drugCodes)).willReturn(listOf(interaction))
 
         val response = service.analyze(
             socialId = "kakao-123",
             request = PrescriptionAnalyzeRequest(medications = medications),
         )
 
-        assertEquals(0, response.safetySummary.safeCount)
+        assertEquals(1, response.safetySummary.safeCount)
         assertEquals(0, response.safetySummary.warningCount)
-        assertEquals(3, response.safetySummary.dangerCount)
+        assertEquals(2, response.safetySummary.dangerCount)
         assertEquals(
-            2,
+            1,
             response.analyzedMedications.count {
                 it.drugName == "Same Drug" &&
                     it.status == MedicationSafetyStatus.DANGER &&
@@ -313,10 +380,10 @@ class PrescriptionAnalyzeServiceTest {
 
         given(userRepository.findBySocialId("kakao-123")).willReturn(user)
         given(userAllergyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(emptyList())
-        given(userHealthProfileRepository.findById(1L)).willReturn(Optional.empty())
+        given(userHealthProfileRepository.findById(1L)).willReturn(Optional.of(UserHealthProfile(userId = 1L, user = user, birthDate = LocalDate.of(1990, 1, 1))))
         given(drugMasterRepository.findAllById(listOf("d001"))).willReturn(listOf(drug))
         given(drugIngredientMapRepository.findAllByDrugCodes(listOf("d001"))).willReturn(emptyList())
-        given(durInteractionRepository.findInteractions(listOf("Tylenol 500mg"))).willReturn(emptyList())
+        given(durInteractionRepository.findInteractions(listOf("D001"))).willReturn(emptyList())
 
         val response = service.analyze(
             socialId = "kakao-123",
@@ -346,10 +413,10 @@ class PrescriptionAnalyzeServiceTest {
 
         given(userRepository.findBySocialId("kakao-123")).willReturn(user)
         given(userAllergyRepository.findAllByUser_IdOrderByCreatedAtAsc(1L)).willReturn(listOf(blankAtcAllergy))
-        given(userHealthProfileRepository.findById(1L)).willReturn(Optional.empty())
+        given(userHealthProfileRepository.findById(1L)).willReturn(Optional.of(UserHealthProfile(userId = 1L, user = user, birthDate = LocalDate.of(1990, 1, 1))))
         given(drugMasterRepository.findAllById(listOf("D001"))).willReturn(listOf(drug))
         given(drugIngredientMapRepository.findAllByDrugCodes(listOf("D001"))).willReturn(emptyList())
-        given(durInteractionRepository.findInteractions(listOf("Tylenol 500mg"))).willReturn(emptyList())
+        given(durInteractionRepository.findInteractions(listOf("D001"))).willReturn(emptyList())
 
         val response = service.analyze(
             socialId = "kakao-123",
