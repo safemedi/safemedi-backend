@@ -10,15 +10,37 @@ class DurElderly(
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
 
-    @Column(name = "drug_name", length = 255)
+    @Column(name = "drug_code", length = 50, nullable = false)
+    val drugCode: String,
+
+    @Column(name = "dur_product_code", length = 50, nullable = false)
+    val durProductCode: String,
+
+    @Column(name = "drug_name", length = 1000, nullable = false)
     val drugName: String,
 
+    @Column(name = "ingredient_code", length = 50, nullable = false)
+    val ingredientCode: String,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", length = 20, nullable = false)
+    val category: DurElderlyCategory = DurElderlyCategory.GENERAL,
+
     @Column(name = "notice_number", length = 50)
-    val noticeNumber: String,
+    val noticeNumber: String? = null,
 
     @Column(name = "notice_date")
-    val noticeDate: LocalDate,
+    val noticeDate: LocalDate? = null,
 
     @Column(name = "warning_message", columnDefinition = "TEXT")
-    val warningMessage: String
+    val warningMessage: String? = null,
+    @Column(name = "source_record_key", length = 64)
+    val sourceRecordKey: String? = null,
+    @Column(name = "runtime_verified", nullable = false)
+    val runtimeVerified: Boolean = false,
 )
+
+enum class DurElderlyCategory {
+    GENERAL,
+    NSAID,
+}

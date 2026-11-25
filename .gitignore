@@ -49,3 +49,6 @@ firebase-adminsdk.json
 ### Monitoring secrets ###
 monitoring/secrets/
 monitoring/README.md
+
+### DUR 로컬 전용 스크립트 및 적재 자료 ###
+scripts/dur/

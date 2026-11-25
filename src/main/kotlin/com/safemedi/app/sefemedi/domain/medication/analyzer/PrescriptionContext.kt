@@ -30,6 +30,15 @@ class PrescriptionContext(
             .forEach { it.addPrecaution(message) }
     }
 
+    fun addInformationalPrecaution(
+        medication: MedicationAnalysisTarget,
+        message: String,
+    ) {
+        mutableAnalyzedMedications
+            .filter { it.medication === medication }
+            .forEach { it.addInformationalPrecaution(message) }
+    }
+
     fun addWarning(
         medication: MedicationAnalysisTarget,
         type: MedicationWarningType,
@@ -77,6 +86,11 @@ class AnalyzedMedication(
         if (status == MedicationSafetyStatus.SAFE) {
             status = MedicationSafetyStatus.WARNING
         }
+    }
+
+    // 데이터 부족 안내는 기존 precautions로 전달하되 약물 위험 상태는 변경하지 않는다.
+    fun addInformationalPrecaution(message: String) {
+        mutablePrecautions.add(message)
     }
 
     fun addWarning(
